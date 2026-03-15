@@ -31,12 +31,21 @@
 
 ## Git Workflow (Required)
 After each completed feature slice:
-1. Stage relevant files.
-2. Commit with a clear message describing the feature.
-3. Push immediately to the current branch.
+1. Bump app version in `package.json` before committing.
+2. Stage relevant files.
+3. Commit with a clear message describing the feature.
+4. Push immediately to the current branch.
+
+Version bump rule:
+- Bump **every commit** (no exceptions).
+- Use semantic versioning in `package.json`:
+  - `patch` for fixes/chore/style/refactor commits
+  - `minor` for new user-facing features
+  - `major` for breaking changes
 
 Suggested command pattern:
 ```bash
+npm version patch --no-git-tag-version
 git add <files>
 git commit -m "feat: <short feature description>"
 git push
