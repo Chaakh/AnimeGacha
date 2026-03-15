@@ -1,0 +1,115 @@
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap');
+
+:root {
+  --bg-0: #0a0f1d;
+  --bg-1: #10162a;
+  --bg-2: #18223d;
+  --ink: #e8f1ff;
+  --ink-soft: #a6bad8;
+  --line: #30466f;
+  --gold: #f7c948;
+  --cyan: #66d9ff;
+  --rose: #ff7aa8;
+  --emerald: #4ce4ab;
+  --danger: #ff6464;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#__nuxt {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Exo 2', sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 12%, #1f3f6e 0%, transparent 28%),
+    radial-gradient(circle at 88% 20%, #5b2457 0%, transparent 26%),
+    radial-gradient(circle at 70% 80%, #143a47 0%, transparent 35%),
+    linear-gradient(165deg, var(--bg-0) 0%, var(--bg-1) 45%, #070b14 100%);
+}
+
+.site-shell {
+  min-height: 100vh;
+}
+
+.site-main {
+  width: min(1160px, 92vw);
+  margin: 0 auto;
+  padding: 1.5rem 0 2.5rem;
+}
+
+.panel {
+  border: 1px solid color-mix(in srgb, var(--line), transparent 42%);
+  border-radius: 18px;
+  background: linear-gradient(170deg, rgb(20 32 58 / 80%) 0%, rgb(11 18 33 / 88%) 100%);
+  box-shadow: 0 24px 45px rgb(4 8 20 / 34%);
+  backdrop-filter: blur(5px);
+}
+
+.button {
+  border: 1px solid color-mix(in srgb, var(--line), transparent 24%);
+  border-radius: 12px;
+  padding: 0.7rem 1.05rem;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+  background: linear-gradient(180deg, #233865 0%, #182643 100%);
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--cyan), white 24%);
+  box-shadow: 0 12px 26px rgb(23 54 110 / 34%);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.button-main {
+  border-color: color-mix(in srgb, #deb13a, transparent 26%);
+  background: linear-gradient(165deg, #c48a1c 0%, #8f5f0f 100%);
+  color: #1d1202;
+}
+
+.button-main:hover {
+  border-color: #ffd371;
+  box-shadow: 0 12px 26px rgb(196 138 28 / 40%);
+}
+
+.section-title {
+  margin: 0;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  letter-spacing: 0.04em;
+}
+
+.muted {
+  color: var(--ink-soft);
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (max-width: 680px) {
+  .site-main {
+    width: 94vw;
+    padding-top: 0.85rem;
+  }
+}
