@@ -3,6 +3,10 @@ const { collectionEntries, battle, getDailyBoss } = useGacha()
 
 const selectedIds = ref<string[]>([])
 const outcome = ref<ReturnType<typeof battle> | null>(null)
+const isBattling = ref(false)
+const battleProgress = ref(0)
+const revealedRounds = ref<string[]>([])
+const battleRunToken = ref(0)
 
 type CollectionEntry = (typeof collectionEntries.value)[number]
 
@@ -64,7 +68,40 @@ const matchupClass = computed(() => {
   return 'is-danger'
 })
 
+const activeRounds = computed(() => {
+  if (isBattling.value) {
+    return revealedRounds.value
+  }
+
+  return outcome.value?.rounds ?? []
+})
+
+const progressLabel = computed(() => {
+  if (!isBattling.value) {
+    if (!outcome.value) {
+      return 'Ready for raid'
+    }
+    return outcome.value.won ? 'Raid complete: Victory' : 'Raid complete: Defeat'
+  }
+
+  if (battleProgress.value < 30) {
+    return 'Opening engagement...'
+  }
+  if (battleProgress.value < 70) {
+    return 'Heavy exchange...'
+  }
+  return 'Final strike...'
+})
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function toggleTeam(id: string) {
+  if (isBattling.value) {
+    return
+  }
+
   if (selectedIds.value.includes(id)) {
     selectedIds.value = selectedIds.value.filter((item) => item !== id)
     outcome.value = null
@@ -78,12 +115,57 @@ function toggleTeam(id: string) {
 }
 
 function clearTeam() {
+  battleRunToken.value += 1
+  isBattling.value = false
+  battleProgress.value = 0
+  revealedRounds.value = []
   selectedIds.value = []
   outcome.value = null
 }
 
-function launchBattle() {
-  outcome.value = battle(selectedIds.value)
+async function launchBattle() {
+  if (isBattling.value) {
+    return
+  }
+
+  const result = battle(selectedIds.value)
+  if (!result) {
+    return
+  }
+
+  const runToken = battleRunToken.value + 1
+  battleRunToken.value = runToken
+  isBattling.value = true
+  outcome.value = null
+  battleProgress.value = 6
+  revealedRounds.value = []
+
+  const totalSteps = Math.max(result.rounds.length + 1, 1)
+
+  for (let index = 0; index < result.rounds.length; index += 1) {
+    await wait(520)
+    if (battleRunToken.value !== runToken) {
+      return
+    }
+
+    const round = result.rounds[index]
+    if (!round) {
+      continue
+    }
+
+    revealedRounds.value = [...revealedRounds.value, round]
+    battleProgress.value = Math.min(92, Math.round(((index + 1) / totalSteps) * 100))
+  }
+
+  await wait(420)
+  if (battleRunToken.value !== runToken) {
+    return
+  }
+
+  battleProgress.value = 100
+  revealedRounds.value = result.rounds
+  outcome.value = result
+  isBattling.value = false
 }
 </script>
 
@@ -142,8 +224,10 @@ function launchBattle() {
         <p class="matchup" :class="matchupClass">{{ matchupLabel }}</p>
         <p v-if="dailyBoss" class="muted projection">Projected power {{ projectedPlayerScore }} vs {{ projectedBossScore }}</p>
         <div class="head-buttons">
-          <button class="button" @click="clearTeam">Clear</button>
-          <button class="button button-main" :disabled="selectedIds.length === 0 || !dailyBoss" @click="launchBattle">Start Battle</button>
+          <button class="button" :disabled="isBattling" @click="clearTeam">Clear</button>
+          <button class="button button-main" :disabled="selectedIds.length === 0 || !dailyBoss || isBattling" @click="launchBattle">
+            {{ isBattling ? 'Battling...' : 'Start Battle' }}
+          </button>
         </div>
       </div>
     </div>
@@ -167,7 +251,8 @@ function launchBattle() {
         v-for="entry in collectionEntries"
         :key="entry.character.id"
         class="pick"
-        :class="{ disabled: selectedIds.length >= 3 && !selectedIds.includes(entry.character.id) }"
+        :class="{ disabled: isBattling || (selectedIds.length >= 3 && !selectedIds.includes(entry.character.id)) }"
+        :disabled="isBattling || (selectedIds.length >= 3 && !selectedIds.includes(entry.character.id))"
         :aria-pressed="selectedIds.includes(entry.character.id)"
         @click="toggleTeam(entry.character.id)"
       >
@@ -180,15 +265,32 @@ function launchBattle() {
     </div>
   </section>
 
-  <section v-if="outcome" class="panel result">
+  <section v-if="isBattling || outcome" class="panel result">
     <div class="result-head">
-      <h2 class="section-title">Battle Report</h2>
-      <p class="winner" :class="{ win: outcome.won, loss: !outcome.won }">
+      <h2 class="section-title">{{ isBattling ? 'Raid In Progress' : 'Battle Report' }}</h2>
+      <p v-if="isBattling" class="winner is-even">Simulating raid...</p>
+      <p v-else-if="outcome" class="winner" :class="{ win: outcome.won, loss: !outcome.won }">
         {{ outcome.won ? 'Victory!' : 'Defeat.' }} Score {{ outcome.playerScore }} - {{ outcome.enemyScore }}
       </p>
     </div>
 
-    <div class="report-grid">
+    <div class="progress-shell" :class="{ active: isBattling }">
+      <div class="progress-meta">
+        <span>{{ progressLabel }}</span>
+        <strong>{{ battleProgress }}%</strong>
+      </div>
+      <div class="progress-track">
+        <span :style="{ width: `${battleProgress}%` }" />
+      </div>
+    </div>
+
+    <h3>{{ isBattling ? 'Live Round Log' : 'Round Log' }}</h3>
+    <ul class="log-list">
+      <li v-if="isBattling && !activeRounds.length" class="muted">Raid is starting...</li>
+      <li v-for="(line, index) in activeRounds" :key="`${index}-${line}`">{{ line }}</li>
+    </ul>
+
+    <div v-if="outcome" class="report-grid">
       <div class="report-block">
         <h3>Your Team</h3>
         <ul>
@@ -206,11 +308,6 @@ function launchBattle() {
         </ul>
       </div>
     </div>
-
-    <h3>Round Log</h3>
-    <ul class="log-list">
-      <li v-for="(line, index) in outcome.rounds" :key="index">{{ line }}</li>
-    </ul>
   </section>
 </template>
 
@@ -451,6 +548,10 @@ function launchBattle() {
   cursor: pointer;
 }
 
+.pick:disabled {
+  cursor: not-allowed;
+}
+
 .pick.disabled {
   opacity: 0.55;
 }
@@ -472,6 +573,47 @@ function launchBattle() {
   margin: 0;
   font-family: 'Rajdhani', sans-serif;
   font-size: 1.08rem;
+}
+
+.progress-shell {
+  margin-top: 0.8rem;
+  border: 1px solid rgb(247 201 72 / 24%);
+  border-radius: 12px;
+  padding: 0.65rem;
+  background: rgb(16 14 10 / 62%);
+}
+
+.progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+}
+
+.progress-meta span {
+  color: #f6e5bc;
+}
+
+.progress-track {
+  margin-top: 0.45rem;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 10%);
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f7c948 0%, #ff8f5f 52%, #ff6b6b 100%);
+  transition: width 240ms ease;
+}
+
+.progress-shell.active .progress-track span {
+  animation: progressPulse 1s ease-in-out infinite;
 }
 
 .win {
@@ -527,6 +669,16 @@ li {
 
 .log-list {
   margin-top: 0.55rem;
+}
+
+@keyframes progressPulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.15);
+  }
 }
 
 @media (max-width: 920px) {
