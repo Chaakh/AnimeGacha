@@ -402,7 +402,7 @@ async function launchBattle() {
       <span class="reward-icon">💀</span>
       <div>
         <strong>Defeat</strong>
-        <p>Your team wasn't strong enough. Try again tomorrow with a better lineup.</p>
+        <p>Your team wasn't strong enough. Try again with a better lineup.</p>
       </div>
     </div>
   </section>
@@ -464,14 +464,17 @@ async function launchBattle() {
           <button class="button" :disabled="isBattling" @click="clearTeam">Clear</button>
           <button
             class="button button-main"
-            :disabled="selectedIds.length === 0 || !dailyBoss || isBattling || dailyBattleDone"
+            :disabled="selectedIds.length === 0 || !dailyBoss || isBattling || dailyBattleWon"
             @click="launchBattle"
           >
-            {{ dailyBattleDone ? (dailyBattleWon ? 'Raid Won ✓' : 'Raid Lost ✗') : isBattling ? 'Battling...' : 'Start Battle' }}
+            {{ dailyBattleWon ? 'Raid Won ✓' : (dailyBattleDone && !isBattling) ? 'Retry Battle' : isBattling ? 'Battling...' : 'Start Battle' }}
           </button>
         </div>
-        <p v-if="dailyBattleDone && !outcome" class="muted raid-done-note">
-          {{ dailyBattleWon ? 'You defeated today\'s boss! +2 bonus packs awarded.' : 'Boss defeated you today. Try again tomorrow!' }}
+        <p v-if="dailyBattleWon && !outcome" class="muted raid-done-note">
+          You defeated today's boss! +2 bonus packs awarded.
+        </p>
+        <p v-else-if="dailyBattleDone && !isBattling && !outcome" class="muted raid-done-note" style="color: var(--danger)">
+          Boss defeated you earlier today. Adjust your lineup and try again!
         </p>
       </div>
     </div>

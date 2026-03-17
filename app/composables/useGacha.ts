@@ -430,7 +430,7 @@ export function useGacha() {
 
   function battle(teamIds: string[]): BattleOutcome | null {
     applyDailyReset()
-    if (save.value.dailyBattleDone) {
+    if (save.value.dailyBattleWon) {
       return null
     }
 
@@ -471,7 +471,7 @@ export function useGacha() {
       save.value.packsRemaining += 2
       rounds.push('Victory! You earned 2 bonus packs as a raid reward!')
     } else {
-      rounds.push('Defeat. Try again tomorrow with a stronger team.')
+      rounds.push('Defeat. Adjust your team and try again!')
     }
 
     return {
