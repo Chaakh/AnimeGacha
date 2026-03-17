@@ -66,7 +66,7 @@ async function summonOne() {
 
   isSummoning.value = true
   isOpeningPack.value = true
-  const [result] = await Promise.all([pullPack(), sleep(900)])
+  const [result] = await Promise.all([pullPack(), sleep(1000)])
   reveal.value = result
   activeCardIndex.value = 0
   showReveal.value = Boolean(result?.length)
@@ -81,8 +81,8 @@ async function summonAll() {
 
   isSummoning.value = true
   isOpeningPack.value = true
-  const [results] = await Promise.all([pullMany(save.value.packsRemaining), sleep(900)])
-  reveal.value = results[0] ?? null
+  const [results] = await Promise.all([pullMany(save.value.packsRemaining), sleep(1000)])
+  reveal.value = results.length ? results.flat() : null
   activeCardIndex.value = 0
   showReveal.value = Boolean(reveal.value?.length)
   isOpeningPack.value = false
@@ -93,66 +93,36 @@ async function summonAll() {
 <template>
   <section class="summon-stage">
     <div class="pack-head">
-      <span class="packs-chip">
-        <span class="chip-icon">🎴</span>
-        TODAY PACKS: <strong>{{ save.packsRemaining }}</strong> / 10
-      </span>
-      <p class="status muted">{{ save.packsRemaining === 10 ? 'All packs ready!' : `${save.packsRemaining} pack${save.packsRemaining !== 1 ? 's' : ''} remaining` }}</p>
-      <p class="gold-next">
-        <span class="gold-icon">✦</span>
-        {{ goldCounter === 0 ? 'GOLD PACK READY' : `Gold pack in ${goldCounter}` }}
-      </p>
+      <span class="packs-chip">DAILY PACKS: <strong>{{ save.packsRemaining }}</strong> / 10</span>
+      <p class="status muted">{{ save.packsRemaining === 10 ? 'Packs full' : `${save.packsRemaining} pack${save.packsRemaining !== 1 ? 's' : ''} remaining` }}</p>
+      <p class="gold-next">{{ goldCounter === 0 ? 'Gold pack ready' : `${goldCounter} pulls until Gold Pack` }}</p>
     </div>
 
     <div class="pack-slot">
       <button
         v-if="!showReveal"
         class="pack-button"
-        :disabled="save.packsRemaining <= 0 || isSummoning || isLoadingPool"
+        :class="{ 'is-opening': isOpeningPack }"
+        :disabled="(save.packsRemaining <= 0 || isSummoning || isLoadingPool) && !isOpeningPack"
         @click="summonOne"
       >
         <div
-          class="foil-pack"
+          class="foil-wrapper"
           :class="{ opening: isOpeningPack, idle: !isOpeningPack }"
-          aria-hidden="true"
         >
-          <!-- Wrapper layers -->
-          <span class="foil-base" />
-          <span class="foil-holo" />
-          <span class="foil-grain" />
-          <span class="foil-prism" />
-
-          <!-- Crimp edges -->
-          <span class="crimp crimp-top" />
-          <span class="crimp crimp-bottom" />
-
-          <!-- Tear line -->
-          <span class="tear-line" />
-          <span class="tear-arrow" />
-
-          <!-- Content -->
-          <span class="foil-seal">BOOSTER PACK</span>
-          <span class="foil-logo">
-            <span class="logo-text">AG</span>
-            <span class="logo-sub">ANIGACKA</span>
-          </span>
-          <span class="foil-stars">
-            <span class="star s1">✦</span>
-            <span class="star s2">✦</span>
-            <span class="star s3">✧</span>
-            <span class="star s4">✦</span>
-            <span class="star s5">✧</span>
-          </span>
-          <span class="foil-edition">1ST EDITION</span>
-          <span class="foil-count">5 CARDS</span>
-
-          <!-- Shine sweep -->
-          <span class="shine-sweep" />
+          <div class="pack-top">
+            <img class="pack-image" src="/pack-art.png" alt="AniGacka Booster Pack Top" draggable="false" />
+            <span class="holo-overlay" />
+            <span class="shine-sweep" />
+          </div>
+          <div class="pack-bottom">
+            <img class="pack-image" src="/pack-art.png" alt="AniGacka Booster Pack Bottom" draggable="false" />
+            <span class="holo-overlay" />
+            <span class="shine-sweep" />
+          </div>
         </div>
-        <span class="tap-text">
-          <span class="tap-icon">👆</span>
-          {{ isSummoning ? 'Ripping open...' : 'TAP TO RIP OPEN' }}
-        </span>
+
+        <span class="tap-text">▲ TAP TO OPEN ▲</span>
       </button>
 
       <div v-else-if="reveal?.length" class="fan-wrap">
@@ -184,7 +154,7 @@ async function summonAll() {
           <button class="button" :disabled="activeCardIndex >= reveal.length - 1" @click="moveCard(1)">Next ▶</button>
         </div>
 
-        <button class="button button-main close-reveal" @click="closeReveal">Done</button>
+        <button class="button button-main close-reveal" @click="closeReveal">BACK TO PACKS</button>
       </div>
     </div>
 
@@ -297,11 +267,11 @@ async function summonAll() {
   transition: transform 180ms ease;
 }
 
-.pack-button:hover .foil-pack {
+.pack-button:hover .foil-wrapper {
   transform: translateY(-4px) scale(1.015);
 }
 
-.pack-button:active .foil-pack {
+.pack-button:active .foil-wrapper {
   transform: translateY(0) scale(0.98);
 }
 
@@ -312,329 +282,133 @@ async function summonAll() {
   place-items: center;
 }
 
-.pack-button:disabled {
+.pack-button:disabled:not(.is-opening) {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-.pack-button:disabled .foil-pack {
+.pack-button:disabled:not(.is-opening) .foil-wrapper {
   filter: saturate(0.35) brightness(0.7);
 }
 
-/* ─── Foil Pack ─── */
-.foil-pack {
-  width: min(72vw, 240px);
-  aspect-ratio: 11 / 17;
-  border-radius: 6px;
+.foil-wrapper {
   position: relative;
-  overflow: hidden;
+  z-index: 1;
+  width: min(72vw, 250px);
+  aspect-ratio: 11 / 17;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  transition: transform 260ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 260ms ease;
-  box-shadow:
-    0 28px 50px rgb(0 0 0 / 50%),
-    0 0 0 1px rgb(255 255 255 / 8%),
-    0 0 40px rgb(180 140 60 / 14%);
+  transition: transform 260ms cubic-bezier(0.23, 1, 0.32, 1), filter 260ms ease;
+  filter: 
+    drop-shadow(0 32px 32px rgb(0 0 0 / 60%))
+    drop-shadow(0 0 1px rgb(255 255 255 / 15%))
+    drop-shadow(0 0 40px rgb(255 255 255 / 5%));
+  border-radius: 1px;
+  background: transparent;
+  isolation: isolate;
 }
 
-.foil-pack.idle {
-  animation: packFloat 3.2s ease-in-out infinite;
+.foil-wrapper.idle {
+  animation: packFloat 3.8s ease-in-out infinite;
 }
 
-/* ─── Foil Wrapper Layers ─── */
-.foil-base {
+.pack-button:hover .foil-wrapper {
+  transform: translateY(-6px) scale(1.02);
+  filter: 
+    drop-shadow(0 40px 40px rgb(0 0 0 / 70%))
+    drop-shadow(0 0 1px rgb(255 255 255 / 20%))
+    drop-shadow(0 0 50px rgb(102 217 255 / 15%));
+}
+
+.pack-button:active .foil-wrapper {
+  transform: translateY(0) scale(0.98);
+}
+
+
+
+.pack-bottom, .pack-top {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(168deg,
-      #2a2230 0%,
-      #1a1428 18%,
-      #0e0c18 40%,
-      #14101e 62%,
-      #1c1630 82%,
-      #221a34 100%
-    );
-  z-index: 0;
+  border-radius: 1px;
 }
 
-.foil-holo {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background:
-    conic-gradient(
-      from 140deg at 50% 45%,
-      rgb(255 100 200 / 28%) 0deg,
-      rgb(100 180 255 / 32%) 60deg,
-      rgb(120 255 180 / 26%) 120deg,
-      rgb(255 220 80 / 30%) 180deg,
-      rgb(255 100 200 / 28%) 240deg,
-      rgb(100 180 255 / 32%) 300deg,
-      rgb(255 100 200 / 28%) 360deg
-    );
-  mix-blend-mode: screen;
-  animation: holoShift 6s ease-in-out infinite alternate;
+.pack-top {
+  clip-path: inset(0 0 88% 0);
+  z-index: 3;
+  /* Origin at X:0% (Left side), Y:12% (Exactly at the bottom of the cut line) */
+  transform-origin: 0% 12%; 
 }
 
-.foil-grain {
-  position: absolute;
-  inset: 0;
+.pack-top .shine-sweep {
+  display: none;
+}
+
+.pack-bottom {
+  clip-path: inset(11.8% 0 0 0);
   z-index: 2;
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.08'/%3E%3C/svg%3E");
-  mix-blend-mode: overlay;
-  opacity: 0.6;
+}
+
+/* ─── Pack Art Image ─── */
+.pack-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 2;
+  border-radius: 1px;
+  background: transparent;
+}
+
+/* ─── Holo Overlay + Shine ─── */
+.holo-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: transparent;
   pointer-events: none;
 }
 
-.foil-prism {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  background:
-    linear-gradient(135deg,
-      rgb(255 255 255 / 0%) 0%,
-      rgb(255 255 255 / 6%) 25%,
-      rgb(255 255 255 / 0%) 50%,
-      rgb(255 255 255 / 4%) 75%,
-      rgb(255 255 255 / 0%) 100%
-    );
-  animation: prismDrift 4s ease-in-out infinite alternate;
-}
-
-/* ─── Crimp Edges ─── */
-.crimp {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 16px;
-  z-index: 5;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgb(200 170 100 / 35%) 0,
-      rgb(200 170 100 / 35%) 6px,
-      rgb(40 30 18 / 70%) 6px,
-      rgb(40 30 18 / 70%) 12px
-    );
-}
-
-.crimp::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  background: linear-gradient(90deg,
-    rgb(255 210 120 / 30%),
-    rgb(255 210 120 / 60%),
-    rgb(255 210 120 / 30%)
-  );
-}
-
-.crimp-top {
-  top: 0;
-  border-radius: 6px 6px 0 0;
-}
-
-.crimp-top::after {
-  bottom: 0;
-}
-
-.crimp-bottom {
-  bottom: 0;
-  border-radius: 0 0 6px 6px;
-}
-
-.crimp-bottom::after {
-  top: 0;
-}
-
-/* ─── Tear Line ─── */
-.tear-line {
-  position: absolute;
-  top: 18px;
-  left: 8%;
-  width: 84%;
-  height: 0;
-  z-index: 6;
-  border-top: 2px dashed rgb(255 220 140 / 40%);
-}
-
-.tear-arrow {
-  position: absolute;
-  top: 11px;
-  right: 6%;
-  z-index: 7;
-  font-size: 0;
-  width: 0;
-  height: 0;
-  border-left: 5px solid rgb(255 220 140 / 50%);
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  animation: arrowPulse 1.6s ease-in-out infinite;
-}
-
-/* ─── Foil Content ─── */
-.foil-seal {
-  position: absolute;
-  top: 28px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 8;
-  border: 1px solid rgb(255 200 100 / 50%);
-  border-radius: 3px;
-  padding: 0.12rem 0.55rem;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  color: rgb(255 220 140 / 80%);
-  background: rgb(20 16 28 / 70%);
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.foil-logo {
-  z-index: 8;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.15rem;
-  margin-top: -8px;
-}
-
-.logo-text {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 3.2rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  background: linear-gradient(180deg, #ffe5a0, #f0b830, #c88a18);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: none;
-  filter: drop-shadow(0 2px 8px rgb(200 140 30 / 40%));
-  line-height: 1;
-}
-
-.logo-sub {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.32em;
-  color: rgb(255 220 160 / 55%);
-}
-
-.foil-stars {
-  position: absolute;
-  z-index: 8;
-  display: flex;
-  gap: 0.6rem;
-  bottom: 62px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.star {
-  font-size: 0.7rem;
-  color: rgb(255 210 100 / 60%);
-  animation: starTwinkle 2s ease-in-out infinite;
-}
-
-.s1 { animation-delay: 0s; }
-.s2 { animation-delay: 0.3s; }
-.s3 { animation-delay: 0.6s; }
-.s4 { animation-delay: 0.9s; }
-.s5 { animation-delay: 1.2s; }
-
-.foil-edition {
-  position: absolute;
-  bottom: 44px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 8;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 0.56rem;
-  font-weight: 700;
-  letter-spacing: 0.28em;
-  color: rgb(255 210 140 / 42%);
-  white-space: nowrap;
-}
-
-.foil-count {
-  position: absolute;
-  bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 8;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  color: rgb(255 220 160 / 36%);
-  border: 1px solid rgb(255 200 100 / 22%);
-  border-radius: 3px;
-  padding: 0.08rem 0.4rem;
-  background: rgb(20 16 28 / 40%);
-  white-space: nowrap;
-}
-
-/* ─── Shine Sweep ─── */
 .shine-sweep {
   position: absolute;
   inset: 0;
-  z-index: 9;
+  z-index: 4;
   background: linear-gradient(
-    105deg,
-    transparent 32%,
-    rgb(255 255 255 / 18%) 46%,
-    rgb(255 255 255 / 26%) 50%,
-    rgb(255 255 255 / 18%) 54%,
-    transparent 68%
+    110deg,
+    transparent 20%,
+    rgb(255 255 255 / 4%) 38%,
+    rgb(255 255 255 / 12%) 45%,
+    rgb(255 255 255 / 4%) 52%,
+    transparent 70%
   );
-  animation: shineSweep 3.4s ease-in-out infinite;
+  animation: shineSweep 4s ease-in-out infinite;
   pointer-events: none;
+  mix-blend-mode: overlay;
 }
 
 /* ─── Tap Text ─── */
 .tap-text {
-  margin-top: 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
+  display: block;
+  margin-top: 1.8rem;
   font-family: 'Rajdhani', sans-serif;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   font-weight: 700;
-  font-size: 0.92rem;
-  color: var(--gold-soft);
-  text-transform: uppercase;
-  animation: pulse 1.4s ease-in-out infinite;
+  font-size: 0.95rem;
+  color: #c8c8c8;
+  animation: pulse 1.6s ease-in-out infinite;
 }
 
-.tap-icon {
-  font-size: 1rem;
-  animation: tapBounce 1.4s ease-in-out infinite;
-}
+
 
 /* ─── Opening Animations ─── */
-.foil-pack.opening {
-  animation: packRip 900ms cubic-bezier(0.23, 1, 0.32, 1);
+.foil-wrapper.opening .pack-bottom {
+  animation: packBodySmooth 1s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
 
-.foil-pack.opening .crimp-top {
-  animation: crimpRip 700ms ease forwards;
-}
-
-.foil-pack.opening .tear-line {
-  animation: tearFlash 600ms ease;
-}
-
-.foil-pack.opening .shine-sweep {
-  animation: burstFlash 500ms ease forwards;
+.foil-wrapper.opening .pack-top {
+  animation: packRipTopSmooth 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 /* ─── Actions ─── */
@@ -1037,66 +811,62 @@ async function summonAll() {
   }
 }
 
-@keyframes packRip {
+@keyframes packBodySmooth {
   0% {
-    transform: scale(1) rotate(0);
-  }
-  20% {
-    transform: scale(1.04) rotate(-0.5deg);
-  }
-  40% {
-    transform: scale(1.06) rotate(0.8deg);
-  }
-  60% {
-    transform: scale(1.02) rotate(-0.3deg);
-    filter: brightness(1.3);
-  }
-  100% {
-    transform: scale(1) rotate(0);
-    filter: brightness(1);
-  }
-}
-
-@keyframes crimpRip {
-  0% {
-    transform: translateX(0) translateY(0) rotate(0deg);
+    transform: scale(1) translateY(0px) rotate(0deg);
+    filter: drop-shadow(0 32px 32px rgb(0 0 0 / 60%)) brightness(1);
     opacity: 1;
   }
-  35% {
-    transform: translateX(-10px) translateY(-8px) rotate(-5deg);
+  15% {
+    transform: scale(1.02) translateY(2px) rotate(1deg);
+    filter: drop-shadow(0 35px 35px rgb(0 0 0 / 70%)) brightness(1.05);
     opacity: 1;
   }
-  70% {
-    transform: translateX(-22px) translateY(-14px) rotate(-9deg);
-    opacity: 0.8;
+  75% {
+    transform: scale(1.02) translateY(2px) rotate(1deg);
+    filter: drop-shadow(0 35px 35px rgb(0 0 0 / 70%)) brightness(1.05);
+    opacity: 1;
+  }
+  95% {
+    transform: scale(1) translateY(0px) rotate(0deg);
+    filter: drop-shadow(0 20px 20px rgb(0 0 0 / 50%)) brightness(1);
+    opacity: 1;
   }
   100% {
-    transform: translateX(-36px) translateY(-20px) rotate(-13deg);
+    transform: scale(0.9) translateY(10px) rotate(0deg);
+    filter: drop-shadow(0 5px 5px rgb(0 0 0 / 20%)) brightness(1);
     opacity: 0;
   }
 }
 
-@keyframes tearFlash {
-  0%, 100% {
-    border-color: rgb(255 220 140 / 40%);
-  }
-  30%, 70% {
-    border-color: rgb(255 240 180 / 90%);
-    box-shadow: 0 0 12px rgb(255 220 140 / 50%);
-  }
-}
-
-@keyframes burstFlash {
+@keyframes packRipTopSmooth {
   0% {
-    transform: translateX(-140%);
-    opacity: 0;
+    transform: translate(0px, 0px) rotate(0deg);
+    filter: drop-shadow(0 0 0 rgb(0 0 0 / 0%));
+    opacity: 1;
   }
-  30% {
+  10% {
+    /* Readying to rip */
+    transform: translate(2px, -1px) rotate(0deg);
+    filter: drop-shadow(0 0 0 rgb(0 0 0 / 10%));
+    opacity: 1;
+  }
+  75% {
+    /* Smooth singular arc over to the left side */
+    transform: translate(-30px, 15px) rotate(-70deg);
+    filter: drop-shadow(8px 15px 20px rgb(0 0 0 / 50%));
+    opacity: 1;
+  }
+  95% {
+    /* Continues the arc downward as it fades and scales down */
+    transform: translate(-45px, 20px) rotate(-85deg) scale(0.95);
+    filter: drop-shadow(10px 20px 20px rgb(0 0 0 / 30%));
     opacity: 1;
   }
   100% {
-    transform: translateX(140%);
-    opacity: 0.6;
+    transform: translate(-50px, 25px) rotate(-90deg) scale(0.9);
+    filter: drop-shadow(10px 20px 20px rgb(0 0 0 / 0%));
+    opacity: 0;
   }
 }
 

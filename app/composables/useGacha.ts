@@ -34,11 +34,11 @@ const DAILY_PACKS = 10
 const PACK_SIZE = 5
 
 const rarityMeta: Record<Rarity, { weight: number; color: string }> = {
-  Common: { weight: 52, color: '#9eb6d1' },
-  Rare: { weight: 27, color: '#4abfff' },
-  Epic: { weight: 12, color: '#db6fff' },
-  Legendary: { weight: 7, color: '#ffc752' },
-  Mythic: { weight: 2, color: '#ff4fd8' }
+  Common: { weight: 70, color: '#9eb6d1' },
+  Rare: { weight: 22, color: '#4abfff' },
+  Epic: { weight: 6, color: '#db6fff' },
+  Legendary: { weight: 1.8, color: '#ffc752' },
+  Mythic: { weight: 0.2, color: '#ff4fd8' }
 }
 
 const fallbackCharacterPool: Character[] = [
