@@ -12,6 +12,6 @@
 const { ensureInitialized } = useGacha()
 
 onMounted(() => {
-  ensureInitialized()
+  void ensureInitialized()
 })
 </script>

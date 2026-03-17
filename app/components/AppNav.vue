@@ -1,19 +1,18 @@
 <template>
   <header class="nav-wrap">
-    <div class="nav-inner panel">
-      <NuxtLink class="brand" to="/">
-        <span class="brand-mark">AG</span>
-        <span class="brand-text">
-          <strong>AniGacka</strong>
-          <small>Daily anime pulls</small>
-        </span>
-      </NuxtLink>
+    <div class="nav-inner">
+      <span class="left-icon" aria-hidden="true">JP</span>
 
-      <nav class="links">
+      <nav class="links" aria-label="Primary navigation">
         <NuxtLink class="link" to="/">Summon</NuxtLink>
         <NuxtLink class="link" to="/collection">Collection</NuxtLink>
         <NuxtLink class="link" to="/battle">Battle</NuxtLink>
       </nav>
+
+      <div class="actions" aria-hidden="true">
+        <span class="icon">🏆</span>
+        <span class="icon alt">?</span>
+      </div>
     </div>
   </header>
 </template>
@@ -22,91 +21,84 @@
 .nav-wrap {
   position: sticky;
   top: 0;
-  z-index: 20;
-  backdrop-filter: blur(8px);
-  background: linear-gradient(to bottom, rgb(8 13 24 / 70%) 0%, transparent 100%);
+  z-index: 30;
+  border-bottom: 1px solid rgb(255 207 102 / 16%);
+  backdrop-filter: blur(10px);
+  background: rgb(10 10 12 / 76%);
 }
 
 .nav-inner {
   width: min(1160px, 92vw);
-  margin: 0.75rem auto;
-  padding: 0.65rem 1rem;
+  margin: 0 auto;
+  min-height: 64px;
+  padding: 0.55rem 0.4rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
 }
 
-.brand {
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  color: inherit;
-}
-
-.brand-mark {
+.left-icon {
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  border: 1px solid rgb(255 203 83 / 50%);
-  background: linear-gradient(150deg, #f7ca57 0%, #a46b10 100%);
-  color: #221400;
+  border-radius: 999px;
+  border: 1px solid rgb(255 207 102 / 26%);
+  color: #ffcd5a;
   font-family: 'Rajdhani', sans-serif;
+  font-size: 0.86rem;
   font-weight: 700;
-}
-
-.brand-text {
-  display: grid;
-}
-
-.brand-text strong {
-  font-family: 'Rajdhani', sans-serif;
-  letter-spacing: 0.06em;
-  font-size: 1.1rem;
-}
-
-.brand-text small {
-  color: var(--ink-soft);
 }
 
 .links {
   display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+  gap: 0.55rem;
 }
 
 .link {
   text-decoration: none;
-  color: var(--ink-soft);
-  font-weight: 600;
-  padding: 0.5rem 0.75rem;
-  border-radius: 10px;
-  border: 1px solid transparent;
+  color: #8b8f98;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: clamp(1.04rem, 2vw, 1.25rem);
+  font-weight: 700;
+  padding: 0.28rem 0.35rem;
+  border-bottom: 2px solid transparent;
 }
 
 .link:hover {
-  color: var(--ink);
-  border-color: rgb(96 150 245 / 38%);
-  background: rgb(22 33 58 / 52%);
+  color: #d5d7de;
 }
 
 .router-link-active {
-  color: var(--ink);
-  border-color: rgb(96 150 245 / 54%);
-  background: rgb(18 29 54 / 88%);
+  color: #f8cf6f;
+  border-color: #f8cf6f;
+}
+
+.actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  background: rgb(255 255 255 / 2%);
+}
+
+.icon.alt {
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
 }
 
 @media (max-width: 680px) {
   .nav-inner {
     width: 94vw;
-    padding: 0.55rem 0.7rem;
-  }
-
-  .brand-text small {
-    display: none;
+    min-height: 56px;
   }
 }
 </style>

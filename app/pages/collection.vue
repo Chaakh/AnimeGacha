@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const { collectionEntries, rarityBreakdown } = useGacha()
 
-const rarityFilter = ref<'All' | 'Common' | 'Rare' | 'Epic' | 'Legendary'>('All')
+const rarityFilter = ref<'All' | 'Common' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic'>('All')
 
 const filteredEntries = computed(() => {
   if (rarityFilter.value === 'All') {
@@ -34,7 +34,7 @@ const totalOwned = computed(() => collectionEntries.value.reduce((sum, entry) =>
 
   <section class="panel filters">
     <button
-      v-for="option in ['All', 'Common', 'Rare', 'Epic', 'Legendary']"
+      v-for="option in ['All', 'Common', 'Rare', 'Epic', 'Legendary', 'Mythic']"
       :key="option"
       class="button"
       :class="{ active: rarityFilter === option }"
@@ -119,7 +119,7 @@ const totalOwned = computed(() => collectionEntries.value.reduce((sum, entry) =>
   margin-top: 0.85rem;
   display: grid;
   gap: 0.7rem;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .split {
