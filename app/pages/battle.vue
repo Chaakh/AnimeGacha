@@ -7,13 +7,19 @@ const isBattling = ref(false)
 const battleProgress = ref(0)
 const battleRunToken = ref(0)
 const activeTurnIndex = ref(-1)
+const isFlashing = ref(false)
+const flashSide = ref<'hero' | 'boss' | null>(null)
+const playerPowerSoFar = ref(0)
+const bossPowerSoFar = ref(0)
 
 interface BattleTurn {
   id: string
   actor: 'hero' | 'boss'
   actorName: string
+  actorImageUrl: string
   text: string
   turnNumber: number
+  power: number
 }
 
 const battleTurns = ref<BattleTurn[]>([])
@@ -132,8 +138,15 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function extractPower(text: string): number {
+  const match = text.match(/(\d+)\s*power/i)
+  return match ? parseInt(match[1], 10) : 0
+}
+
 function toBattleTurns(result: NonNullable<ReturnType<typeof battle>>): BattleTurn[] {
-  const bossName = result.enemyTeam[0]?.name ?? 'Raid Boss'
+  const boss = result.enemyTeam[0]
+  const bossName = boss?.name ?? 'Raid Boss'
+  const bossImage = boss?.imageUrl ?? ''
 
   return result.rounds.map((line, index) => {
     const lowered = line.toLowerCase()
@@ -144,8 +157,10 @@ function toBattleTurns(result: NonNullable<ReturnType<typeof battle>>): BattleTu
       id: `${index}-${line}`,
       actor: isBossTurn ? 'boss' : 'hero',
       actorName: isBossTurn ? bossName : matchedHero?.name ?? 'Hero Squad',
+      actorImageUrl: isBossTurn ? bossImage : (matchedHero?.imageUrl ?? ''),
       text: line,
-      turnNumber: index + 1
+      turnNumber: index + 1,
+      power: extractPower(line)
     }
   })
 }
@@ -185,6 +200,14 @@ function clearTeam() {
   resetBattlePresentation(true)
 }
 
+async function triggerFlash(side: 'hero' | 'boss') {
+  flashSide.value = side
+  isFlashing.value = true
+  await wait(350)
+  isFlashing.value = false
+  flashSide.value = null
+}
+
 async function launchBattle() {
   if (isBattling.value) {
     return
@@ -211,30 +234,42 @@ async function launchBattle() {
   battleTurns.value = turns
   revealedTurns.value = []
   outcome.value = null
-  battleProgress.value = 6
+  battleProgress.value = 4
+  playerPowerSoFar.value = 0
+  bossPowerSoFar.value = 0
 
   const totalSteps = Math.max(turns.length + 1, 1)
 
+  // Cinematic pre-battle delay
+  await wait(1500)
+  if (battleRunToken.value !== runToken) return
+
   for (let index = 0; index < turns.length; index += 1) {
-    await wait(520)
-    if (battleRunToken.value !== runToken) {
-      return
-    }
+    // Dramatic pause between turns
+    await wait(1200)
+    if (battleRunToken.value !== runToken) return
 
     const turn = turns[index]
-    if (!turn) {
-      continue
-    }
+    if (!turn) continue
 
     activeTurnIndex.value = index
     revealedTurns.value = [...revealedTurns.value, turn]
     battleProgress.value = Math.min(92, Math.round(((index + 1) / totalSteps) * 100))
+
+    // Track running power totals
+    if (turn.actor === 'hero') {
+      playerPowerSoFar.value += turn.power
+    } else {
+      bossPowerSoFar.value += turn.power
+    }
+
+    // Flash effect on impact
+    triggerFlash(turn.actor)
   }
 
-  await wait(420)
-  if (battleRunToken.value !== runToken) {
-    return
-  }
+  // Final dramatic pause before result
+  await wait(1200)
+  if (battleRunToken.value !== runToken) return
 
   battleProgress.value = 100
   activeTurnIndex.value = turns.length - 1
@@ -245,13 +280,60 @@ async function launchBattle() {
 </script>
 
 <template>
-  <section v-if="isBattling || outcome" class="panel result">
+  <section v-if="isBattling || outcome" class="panel result" :class="{ shaking: isFlashing }">
     <div class="result-head">
       <h2 class="section-title">{{ isBattling ? 'Raid Battle' : 'Raid Report' }}</h2>
       <p v-if="isBattling" class="winner is-even">Battle in progress...</p>
       <p v-else-if="outcome" class="winner" :class="{ win: outcome.won, loss: !outcome.won }">
-        {{ outcome.won ? 'Victory!' : 'Defeat.' }} Score {{ outcome.playerScore }} - {{ outcome.enemyScore }}
+        {{ outcome.won ? '🏆 Victory!' : '💀 Defeat.' }} Score {{ outcome.playerScore }} - {{ outcome.enemyScore }}
       </p>
+    </div>
+
+    <!-- Clash Stage -->
+    <div class="clash-stage" :class="{ 'flash-hero': flashSide === 'hero', 'flash-boss': flashSide === 'boss' }">
+      <div class="clash-side hero-side">
+        <div v-if="currentTurn?.actor === 'hero' && currentTurn.actorImageUrl" class="clash-portrait-wrap">
+          <img :src="currentTurn.actorImageUrl" :alt="currentTurn.actorName" class="clash-portrait" />
+        </div>
+        <div v-else class="clash-portrait-wrap clash-placeholder">
+          <span>⚔️</span>
+        </div>
+        <p class="clash-name">{{ currentTurn?.actor === 'hero' ? currentTurn.actorName : 'Heroes' }}</p>
+      </div>
+
+      <div class="clash-center">
+        <span class="vs-badge">VS</span>
+        <p v-if="currentTurn" class="turn-counter">Turn {{ currentTurn.turnNumber }}/{{ battleTurns.length }}</p>
+        <p v-else class="turn-counter">Preparing...</p>
+      </div>
+
+      <div class="clash-side boss-side-stage">
+        <div v-if="activeBoss?.imageUrl" class="clash-portrait-wrap boss-portrait-wrap">
+          <img :src="activeBoss.imageUrl" :alt="activeBoss.name" class="clash-portrait" />
+        </div>
+        <div v-else class="clash-portrait-wrap clash-placeholder">
+          <span>👹</span>
+        </div>
+        <p class="clash-name boss-label">{{ activeBoss?.name ?? 'Raid Boss' }}</p>
+      </div>
+    </div>
+
+    <!-- Live Power Bar -->
+    <div v-if="isBattling" class="power-comparison">
+      <div class="power-side hero-power">
+        <span>Heroes</span>
+        <strong>{{ playerPowerSoFar }}</strong>
+      </div>
+      <div class="power-bar-track">
+        <div
+          class="power-bar-hero"
+          :style="{ width: `${playerPowerSoFar + bossPowerSoFar > 0 ? Math.round((playerPowerSoFar / (playerPowerSoFar + bossPowerSoFar)) * 100) : 50}%` }"
+        />
+      </div>
+      <div class="power-side boss-power">
+        <span>Boss</span>
+        <strong>{{ bossPowerSoFar }}</strong>
+      </div>
     </div>
 
     <div class="progress-shell" :class="{ active: isBattling }">
@@ -264,62 +346,28 @@ async function launchBattle() {
       </div>
     </div>
 
-    <div class="turn-board">
-      <article class="turn-side hero-turn-side" :class="{ active: currentTurn?.actor === 'hero' }">
-        <small>Hero Turn</small>
-        <p>{{ currentTurn?.actor === 'hero' ? `${currentTurn.actorName} is acting` : 'Waiting for hero action' }}</p>
-      </article>
-
-      <div class="turn-mid">
-        <strong v-if="currentTurn">Turn {{ currentTurn.turnNumber }} / {{ battleTurns.length }}</strong>
-        <strong v-else>Preparing turn order...</strong>
-      </div>
-
-      <article class="turn-side boss-turn-side" :class="{ active: currentTurn?.actor === 'boss' }">
-        <small>Boss Turn</small>
-        <p>{{ currentTurn?.actor === 'boss' ? `${currentTurn.actorName} is acting` : 'Boss is charging' }}</p>
-      </article>
-    </div>
-
-    <div class="turn-lineups">
-      <div class="lineup-row">
-        <span class="lineup-label">Heroes</span>
-        <div class="lineup-chips">
-          <span
-            v-for="hero in activeTeam"
-            :key="hero.id"
-            class="lineup-chip"
-            :class="{ spotlight: currentTurn?.actor === 'hero' && currentTurn?.actorName === hero.name }"
-          >
-            {{ hero.name }}
-          </span>
-        </div>
-      </div>
-
-      <div class="lineup-row">
-        <span class="lineup-label">Boss</span>
-        <div class="lineup-chips">
-          <span class="lineup-chip boss-chip" :class="{ spotlight: currentTurn?.actor === 'boss' }">
-            {{ activeBoss?.name ?? 'Raid Boss' }}
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <h3>Turn Feed</h3>
+    <h3 v-if="visibleTurns.length || isBattling">Combat Log</h3>
     <ul class="turn-feed">
-      <li v-if="isBattling && !visibleTurns.length" class="turn-card muted">Waiting for opening move...</li>
+      <li v-if="isBattling && !visibleTurns.length" class="turn-card muted">Fighters are sizing each other up...</li>
       <li
         v-for="turn in visibleTurns"
         :key="turn.id"
-        class="turn-card"
+        class="turn-card slide-in"
         :class="[turn.actor, { current: currentTurn?.id === turn.id }]"
       >
-        <div class="turn-card-head">
-          <span>Turn {{ turn.turnNumber }}</span>
-          <span class="turn-badge">{{ turn.actor === 'boss' ? 'Boss Attack' : 'Hero Attack' }}</span>
+        <div class="turn-card-inner">
+          <img v-if="turn.actorImageUrl" :src="turn.actorImageUrl" :alt="turn.actorName" class="turn-thumb" />
+          <div class="turn-card-body">
+            <div class="turn-card-head">
+              <span>Turn {{ turn.turnNumber }}</span>
+              <span class="turn-badge" :class="turn.actor">{{ turn.actor === 'boss' ? '👹 Boss' : '⚔️ Hero' }}</span>
+            </div>
+            <p>{{ turn.text }}</p>
+            <div v-if="turn.power" class="turn-power-chip">
+              {{ turn.power }} PWR
+            </div>
+          </div>
         </div>
-        <p>{{ turn.text }}</p>
       </li>
     </ul>
 
@@ -767,131 +815,225 @@ async function launchBattle() {
   animation: progressPulse 1s ease-in-out infinite;
 }
 
-.turn-board {
-  margin-top: 0.75rem;
+/* ─── Clash Stage ─── */
+.clash-stage {
+  margin-top: 0.85rem;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.55rem;
-  align-items: stretch;
-}
-
-.turn-side,
-.turn-mid {
-  border: 1px solid rgb(255 255 255 / 14%);
-  border-radius: 10px;
-  padding: 0.55rem 0.6rem;
-  background: rgb(12 14 18 / 70%);
-}
-
-.turn-side small {
-  display: block;
-  color: var(--ink-soft);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  font-size: 0.72rem;
-}
-
-.turn-side p {
-  margin: 0.22rem 0 0;
-  font-family: 'Rajdhani', sans-serif;
-  font-weight: 700;
-}
-
-.turn-mid {
-  display: grid;
-  place-items: center;
-  text-align: center;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 1rem;
-  letter-spacing: 0.04em;
-}
-
-.hero-turn-side.active {
-  border-color: rgb(102 217 255 / 60%);
-  box-shadow: inset 0 0 18px rgb(102 217 255 / 16%);
-}
-
-.boss-turn-side.active {
-  border-color: rgb(255 109 109 / 62%);
-  box-shadow: inset 0 0 18px rgb(255 109 109 / 16%);
-}
-
-.turn-lineups {
-  margin-top: 0.75rem;
-  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   gap: 0.5rem;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 14px;
+  background: radial-gradient(circle at 50% 50%, rgb(20 20 30 / 90%) 0%, rgb(10 10 16 / 95%) 100%);
+  transition: box-shadow 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
 
-.lineup-row {
-  display: grid;
-  grid-template-columns: 64px 1fr;
-  gap: 0.55rem;
-  align-items: start;
+.clash-stage.flash-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(102 217 255 / 12%);
+  pointer-events: none;
+  animation: flashFade 0.35s ease-out forwards;
 }
 
-.lineup-label {
-  font-size: 0.76rem;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-  padding-top: 0.26rem;
+.clash-stage.flash-boss::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(255 109 109 / 12%);
+  pointer-events: none;
+  animation: flashFade 0.35s ease-out forwards;
 }
 
-.lineup-chips {
+.clash-side {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
   gap: 0.4rem;
 }
 
-.lineup-chip {
-  border: 1px solid rgb(255 255 255 / 18%);
-  border-radius: 999px;
-  padding: 0.22rem 0.55rem;
-  background: rgb(12 14 20 / 72%);
-  font-size: 0.84rem;
+.clash-portrait-wrap {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid rgb(102 217 255 / 50%);
+  background: rgb(12 14 20 / 80%);
+  display: grid;
+  place-items: center;
+}
+
+.boss-portrait-wrap {
+  border-color: rgb(255 109 109 / 55%);
+}
+
+.clash-placeholder {
+  font-size: 1.8rem;
+}
+
+.clash-portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.clash-name {
+  margin: 0;
   font-family: 'Rajdhani', sans-serif;
   font-weight: 700;
+  font-size: 0.92rem;
+  text-align: center;
+  color: #c5e4ff;
 }
 
-.boss-chip {
-  border-color: rgb(255 109 109 / 35%);
-  color: #ffd0d0;
+.boss-label {
+  color: #ffb5b5;
 }
 
-.lineup-chip.spotlight {
-  border-color: rgb(247 201 72 / 75%);
-  box-shadow: 0 0 14px rgb(247 201 72 / 20%);
+.clash-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
 }
 
+.vs-badge {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #f7c948;
+  text-shadow: 0 0 18px rgb(247 201 72 / 40%);
+}
+
+.turn-counter {
+  margin: 0;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+
+/* ─── Power Comparison ─── */
+.power-comparison {
+  margin-top: 0.65rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.power-side {
+  text-align: center;
+  font-family: 'Rajdhani', sans-serif;
+}
+
+.power-side span {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.power-side strong {
+  font-size: 1.1rem;
+}
+
+.hero-power strong {
+  color: #66d9ff;
+}
+
+.boss-power strong {
+  color: #ff6d6d;
+}
+
+.power-bar-track {
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgb(255 109 109 / 30%);
+  position: relative;
+}
+
+.power-bar-hero {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3ca9d9 0%, #66d9ff 100%);
+  transition: width 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* ─── Shake Effect ─── */
+.result.shaking {
+  animation: screenShake 0.35s ease-out;
+}
+
+/* ─── Turn Feed ─── */
 .turn-feed {
   list-style: none;
   padding: 0;
   margin: 0.62rem 0 0;
   display: grid;
-  gap: 0.45rem;
+  gap: 0.5rem;
 }
 
 .turn-card {
   margin: 0;
   border: 1px solid rgb(255 255 255 / 13%);
-  border-radius: 10px;
-  padding: 0.52rem 0.62rem;
+  border-radius: 12px;
+  padding: 0.6rem 0.7rem;
   background: rgb(11 13 18 / 72%);
+}
+
+.turn-card.slide-in {
+  animation: slideInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.turn-card-inner {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+}
+
+.turn-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid rgb(255 255 255 / 16%);
+}
+
+.turn-card-body {
+  flex: 1;
+  min-width: 0;
 }
 
 .turn-card.hero {
   border-color: rgb(102 217 255 / 30%);
-  background: linear-gradient(180deg, rgb(14 20 28 / 76%) 0%, rgb(10 13 20 / 74%) 100%);
+  background: linear-gradient(135deg, rgb(14 20 28 / 76%) 0%, rgb(10 13 20 / 74%) 100%);
+}
+
+.turn-card.hero .turn-thumb {
+  border-color: rgb(102 217 255 / 40%);
 }
 
 .turn-card.boss {
   border-color: rgb(255 109 109 / 30%);
-  background: linear-gradient(180deg, rgb(30 15 20 / 70%) 0%, rgb(14 12 16 / 72%) 100%);
+  background: linear-gradient(135deg, rgb(30 15 20 / 70%) 0%, rgb(14 12 16 / 72%) 100%);
+}
+
+.turn-card.boss .turn-thumb {
+  border-color: rgb(255 109 109 / 40%);
 }
 
 .turn-card.current {
   border-color: rgb(247 201 72 / 80%);
-  box-shadow: 0 0 16px rgb(247 201 72 / 18%);
+  box-shadow: 0 0 20px rgb(247 201 72 / 18%);
 }
 
 .turn-card-head {
@@ -907,11 +1049,36 @@ async function launchBattle() {
   font-size: 0.75rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ink-soft);
+}
+
+.turn-badge.hero {
+  color: #66d9ff;
+  background: none;
+  border: none;
+}
+
+.turn-badge.boss {
+  color: #ff6d6d;
+  background: none;
+  border: none;
 }
 
 .turn-card p {
-  margin: 0.25rem 0 0;
+  margin: 0.2rem 0 0;
+  font-size: 0.92rem;
+}
+
+.turn-power-chip {
+  margin-top: 0.35rem;
+  display: inline-block;
+  border: 1px solid rgb(247 201 72 / 40%);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: #ffe3a5;
+  background: rgb(25 18 7 / 55%);
 }
 
 .win {
@@ -1024,6 +1191,32 @@ li {
   }
 }
 
+@keyframes screenShake {
+  0% { transform: translate(0, 0); }
+  15% { transform: translate(-3px, 1px); }
+  30% { transform: translate(3px, -1px); }
+  45% { transform: translate(-2px, 2px); }
+  60% { transform: translate(2px, -1px); }
+  75% { transform: translate(-1px, 1px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes flashFade {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes slideInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 920px) {
   .briefing-body {
     grid-template-columns: 1fr;
@@ -1035,13 +1228,33 @@ li {
 }
 
 @media (max-width: 780px) {
-  .turn-board {
-    grid-template-columns: 1fr;
+  .clash-stage {
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.3rem;
+    padding: 0.55rem;
   }
 
-  .lineup-row {
-    grid-template-columns: 1fr;
-    gap: 0.22rem;
+  .clash-portrait-wrap {
+    width: 60px;
+    height: 60px;
+  }
+
+  .vs-badge {
+    font-size: 1.2rem;
+  }
+
+  .clash-name {
+    font-size: 0.78rem;
+  }
+
+  .power-comparison {
+    grid-template-columns: auto 1fr auto;
+    gap: 0.35rem;
+  }
+
+  .turn-thumb {
+    width: 38px;
+    height: 38px;
   }
 
   .draft-meta {
