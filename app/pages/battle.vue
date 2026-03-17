@@ -5,8 +5,19 @@ const selectedIds = ref<string[]>([])
 const outcome = ref<ReturnType<typeof battle> | null>(null)
 const isBattling = ref(false)
 const battleProgress = ref(0)
-const revealedRounds = ref<string[]>([])
 const battleRunToken = ref(0)
+const activeTurnIndex = ref(-1)
+
+interface BattleTurn {
+  id: string
+  actor: 'hero' | 'boss'
+  actorName: string
+  text: string
+  turnNumber: number
+}
+
+const battleTurns = ref<BattleTurn[]>([])
+const revealedTurns = ref<BattleTurn[]>([])
 
 type CollectionEntry = (typeof collectionEntries.value)[number]
 
@@ -68,12 +79,36 @@ const matchupClass = computed(() => {
   return 'is-danger'
 })
 
-const activeRounds = computed(() => {
+const activeBoss = computed(() => {
+  return outcome.value?.enemyTeam[0] ?? dailyBoss.value ?? null
+})
+
+const activeTeam = computed(() => {
+  if (outcome.value?.playerTeam.length) {
+    return outcome.value.playerTeam
+  }
+  return selectedEntries.value.map((entry) => entry.character)
+})
+
+const visibleTurns = computed(() => {
   if (isBattling.value) {
-    return revealedRounds.value
+    return revealedTurns.value
+  }
+  return battleTurns.value
+})
+
+const currentTurn = computed(() => {
+  if (!battleTurns.value.length) {
+    return null
   }
 
-  return outcome.value?.rounds ?? []
+  if (isBattling.value && activeTurnIndex.value < 0) {
+    return null
+  }
+
+  const fallbackIndex = battleTurns.value.length - 1
+  const safeIndex = activeTurnIndex.value >= 0 ? Math.min(activeTurnIndex.value, fallbackIndex) : fallbackIndex
+  return battleTurns.value[safeIndex] ?? null
 })
 
 const progressLabel = computed(() => {
@@ -84,17 +119,47 @@ const progressLabel = computed(() => {
     return outcome.value.won ? 'Raid complete: Victory' : 'Raid complete: Defeat'
   }
 
-  if (battleProgress.value < 30) {
-    return 'Opening engagement...'
+  if (!currentTurn.value) {
+    return 'Drawing first turn...'
   }
-  if (battleProgress.value < 70) {
-    return 'Heavy exchange...'
-  }
-  return 'Final strike...'
+
+  return `${currentTurn.value.actorName} is attacking`
 })
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function toBattleTurns(result: NonNullable<ReturnType<typeof battle>>): BattleTurn[] {
+  const bossName = result.enemyTeam[0]?.name ?? 'Raid Boss'
+
+  return result.rounds.map((line, index) => {
+    const lowered = line.toLowerCase()
+    const isBossTurn = lowered.includes('raid boss') || lowered.includes('boss')
+    const matchedHero = result.playerTeam.find((hero) => line.startsWith(hero.name))
+
+    return {
+      id: `${index}-${line}`,
+      actor: isBossTurn ? 'boss' : 'hero',
+      actorName: isBossTurn ? bossName : matchedHero?.name ?? 'Hero Squad',
+      text: line,
+      turnNumber: index + 1
+    }
+  })
+}
+
+function resetBattlePresentation(clearSelection = false) {
+  battleRunToken.value += 1
+  isBattling.value = false
+  battleProgress.value = 0
+  activeTurnIndex.value = -1
+  revealedTurns.value = []
+  battleTurns.value = []
+  outcome.value = null
+
+  if (clearSelection) {
+    selectedIds.value = []
+  }
 }
 
 function toggleTeam(id: string) {
@@ -103,24 +168,19 @@ function toggleTeam(id: string) {
   }
 
   if (selectedIds.value.includes(id)) {
+    resetBattlePresentation()
     selectedIds.value = selectedIds.value.filter((item) => item !== id)
-    outcome.value = null
     return
   }
 
   if (selectedIds.value.length < 3) {
+    resetBattlePresentation()
     selectedIds.value = [...selectedIds.value, id]
-    outcome.value = null
   }
 }
 
 function clearTeam() {
-  battleRunToken.value += 1
-  isBattling.value = false
-  battleProgress.value = 0
-  revealedRounds.value = []
-  selectedIds.value = []
-  outcome.value = null
+  resetBattlePresentation(true)
 }
 
 async function launchBattle() {
@@ -133,27 +193,39 @@ async function launchBattle() {
     return
   }
 
+  if (import.meta.client) {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const turns = toBattleTurns(result)
+  if (!turns.length) {
+    return
+  }
+
   const runToken = battleRunToken.value + 1
   battleRunToken.value = runToken
   isBattling.value = true
+  activeTurnIndex.value = -1
+  battleTurns.value = turns
+  revealedTurns.value = []
   outcome.value = null
   battleProgress.value = 6
-  revealedRounds.value = []
 
-  const totalSteps = Math.max(result.rounds.length + 1, 1)
+  const totalSteps = Math.max(turns.length + 1, 1)
 
-  for (let index = 0; index < result.rounds.length; index += 1) {
+  for (let index = 0; index < turns.length; index += 1) {
     await wait(520)
     if (battleRunToken.value !== runToken) {
       return
     }
 
-    const round = result.rounds[index]
-    if (!round) {
+    const turn = turns[index]
+    if (!turn) {
       continue
     }
 
-    revealedRounds.value = [...revealedRounds.value, round]
+    activeTurnIndex.value = index
+    revealedTurns.value = [...revealedTurns.value, turn]
     battleProgress.value = Math.min(92, Math.round(((index + 1) / totalSteps) * 100))
   }
 
@@ -163,13 +235,112 @@ async function launchBattle() {
   }
 
   battleProgress.value = 100
-  revealedRounds.value = result.rounds
+  activeTurnIndex.value = turns.length - 1
+  revealedTurns.value = turns
   outcome.value = result
   isBattling.value = false
 }
 </script>
 
 <template>
+  <section v-if="isBattling || outcome" class="panel result">
+    <div class="result-head">
+      <h2 class="section-title">{{ isBattling ? 'Raid Battle' : 'Raid Report' }}</h2>
+      <p v-if="isBattling" class="winner is-even">Battle in progress...</p>
+      <p v-else-if="outcome" class="winner" :class="{ win: outcome.won, loss: !outcome.won }">
+        {{ outcome.won ? 'Victory!' : 'Defeat.' }} Score {{ outcome.playerScore }} - {{ outcome.enemyScore }}
+      </p>
+    </div>
+
+    <div class="progress-shell" :class="{ active: isBattling }">
+      <div class="progress-meta">
+        <span>{{ progressLabel }}</span>
+        <strong>{{ battleProgress }}%</strong>
+      </div>
+      <div class="progress-track">
+        <span :style="{ width: `${battleProgress}%` }" />
+      </div>
+    </div>
+
+    <div class="turn-board">
+      <article class="turn-side hero-turn-side" :class="{ active: currentTurn?.actor === 'hero' }">
+        <small>Hero Turn</small>
+        <p>{{ currentTurn?.actor === 'hero' ? `${currentTurn.actorName} is acting` : 'Waiting for hero action' }}</p>
+      </article>
+
+      <div class="turn-mid">
+        <strong v-if="currentTurn">Turn {{ currentTurn.turnNumber }} / {{ battleTurns.length }}</strong>
+        <strong v-else>Preparing turn order...</strong>
+      </div>
+
+      <article class="turn-side boss-turn-side" :class="{ active: currentTurn?.actor === 'boss' }">
+        <small>Boss Turn</small>
+        <p>{{ currentTurn?.actor === 'boss' ? `${currentTurn.actorName} is acting` : 'Boss is charging' }}</p>
+      </article>
+    </div>
+
+    <div class="turn-lineups">
+      <div class="lineup-row">
+        <span class="lineup-label">Heroes</span>
+        <div class="lineup-chips">
+          <span
+            v-for="hero in activeTeam"
+            :key="hero.id"
+            class="lineup-chip"
+            :class="{ spotlight: currentTurn?.actor === 'hero' && currentTurn?.actorName === hero.name }"
+          >
+            {{ hero.name }}
+          </span>
+        </div>
+      </div>
+
+      <div class="lineup-row">
+        <span class="lineup-label">Boss</span>
+        <div class="lineup-chips">
+          <span class="lineup-chip boss-chip" :class="{ spotlight: currentTurn?.actor === 'boss' }">
+            {{ activeBoss?.name ?? 'Raid Boss' }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <h3>Turn Feed</h3>
+    <ul class="turn-feed">
+      <li v-if="isBattling && !visibleTurns.length" class="turn-card muted">Waiting for opening move...</li>
+      <li
+        v-for="turn in visibleTurns"
+        :key="turn.id"
+        class="turn-card"
+        :class="[turn.actor, { current: currentTurn?.id === turn.id }]"
+      >
+        <div class="turn-card-head">
+          <span>Turn {{ turn.turnNumber }}</span>
+          <span class="turn-badge">{{ turn.actor === 'boss' ? 'Boss Attack' : 'Hero Attack' }}</span>
+        </div>
+        <p>{{ turn.text }}</p>
+      </li>
+    </ul>
+
+    <div v-if="outcome" class="report-grid">
+      <div class="report-block">
+        <h3>Your Team</h3>
+        <ul>
+          <li v-for="hero in outcome.playerTeam" :key="hero.id">{{ hero.name }} (ATK {{ hero.attack }} | DEF {{ hero.defense }})</li>
+        </ul>
+      </div>
+
+      <div class="report-block boss-side">
+        <h3>Enemy Boss</h3>
+        <ul>
+          <li v-for="(enemy, index) in outcome.enemyTeam" :key="`${enemy.id}-${index}`">
+            <strong class="boss-name">{{ enemy.name }}</strong>
+            <span class="boss-stats">ATK {{ enemy.attack }} | DEF {{ enemy.defense }}</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
   <section class="panel raid-briefing">
     <div class="briefing-intro">
       <p class="eyebrow">Step 1</p>
@@ -262,51 +433,6 @@ async function launchBattle() {
           :selected="selectedIds.includes(entry.character.id)"
         />
       </button>
-    </div>
-  </section>
-
-  <section v-if="isBattling || outcome" class="panel result">
-    <div class="result-head">
-      <h2 class="section-title">{{ isBattling ? 'Raid In Progress' : 'Battle Report' }}</h2>
-      <p v-if="isBattling" class="winner is-even">Simulating raid...</p>
-      <p v-else-if="outcome" class="winner" :class="{ win: outcome.won, loss: !outcome.won }">
-        {{ outcome.won ? 'Victory!' : 'Defeat.' }} Score {{ outcome.playerScore }} - {{ outcome.enemyScore }}
-      </p>
-    </div>
-
-    <div class="progress-shell" :class="{ active: isBattling }">
-      <div class="progress-meta">
-        <span>{{ progressLabel }}</span>
-        <strong>{{ battleProgress }}%</strong>
-      </div>
-      <div class="progress-track">
-        <span :style="{ width: `${battleProgress}%` }" />
-      </div>
-    </div>
-
-    <h3>{{ isBattling ? 'Live Round Log' : 'Round Log' }}</h3>
-    <ul class="log-list">
-      <li v-if="isBattling && !activeRounds.length" class="muted">Raid is starting...</li>
-      <li v-for="(line, index) in activeRounds" :key="`${index}-${line}`">{{ line }}</li>
-    </ul>
-
-    <div v-if="outcome" class="report-grid">
-      <div class="report-block">
-        <h3>Your Team</h3>
-        <ul>
-          <li v-for="hero in outcome.playerTeam" :key="hero.id">{{ hero.name }} (ATK {{ hero.attack }} | DEF {{ hero.defense }})</li>
-        </ul>
-      </div>
-
-      <div class="report-block boss-side">
-        <h3>Enemy Boss</h3>
-        <ul>
-          <li v-for="(enemy, index) in outcome.enemyTeam" :key="`${enemy.id}-${index}`">
-            <strong class="boss-name">{{ enemy.name }}</strong>
-            <span class="boss-stats">ATK {{ enemy.attack }} | DEF {{ enemy.defense }}</span>
-          </li>
-        </ul>
-      </div>
     </div>
   </section>
 </template>
@@ -557,7 +683,7 @@ async function launchBattle() {
 }
 
 .result {
-  margin-top: 0.9rem;
+  margin-bottom: 0.9rem;
   padding: 1rem;
 }
 
@@ -616,6 +742,153 @@ async function launchBattle() {
   animation: progressPulse 1s ease-in-out infinite;
 }
 
+.turn-board {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  align-items: stretch;
+}
+
+.turn-side,
+.turn-mid {
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 10px;
+  padding: 0.55rem 0.6rem;
+  background: rgb(12 14 18 / 70%);
+}
+
+.turn-side small {
+  display: block;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+}
+
+.turn-side p {
+  margin: 0.22rem 0 0;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+}
+
+.turn-mid {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+}
+
+.hero-turn-side.active {
+  border-color: rgb(102 217 255 / 60%);
+  box-shadow: inset 0 0 18px rgb(102 217 255 / 16%);
+}
+
+.boss-turn-side.active {
+  border-color: rgb(255 109 109 / 62%);
+  box-shadow: inset 0 0 18px rgb(255 109 109 / 16%);
+}
+
+.turn-lineups {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.lineup-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 0.55rem;
+  align-items: start;
+}
+
+.lineup-label {
+  font-size: 0.76rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding-top: 0.26rem;
+}
+
+.lineup-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.lineup-chip {
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 999px;
+  padding: 0.22rem 0.55rem;
+  background: rgb(12 14 20 / 72%);
+  font-size: 0.84rem;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+}
+
+.boss-chip {
+  border-color: rgb(255 109 109 / 35%);
+  color: #ffd0d0;
+}
+
+.lineup-chip.spotlight {
+  border-color: rgb(247 201 72 / 75%);
+  box-shadow: 0 0 14px rgb(247 201 72 / 20%);
+}
+
+.turn-feed {
+  list-style: none;
+  padding: 0;
+  margin: 0.62rem 0 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.turn-card {
+  margin: 0;
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 10px;
+  padding: 0.52rem 0.62rem;
+  background: rgb(11 13 18 / 72%);
+}
+
+.turn-card.hero {
+  border-color: rgb(102 217 255 / 30%);
+  background: linear-gradient(180deg, rgb(14 20 28 / 76%) 0%, rgb(10 13 20 / 74%) 100%);
+}
+
+.turn-card.boss {
+  border-color: rgb(255 109 109 / 30%);
+  background: linear-gradient(180deg, rgb(30 15 20 / 70%) 0%, rgb(14 12 16 / 72%) 100%);
+}
+
+.turn-card.current {
+  border-color: rgb(247 201 72 / 80%);
+  box-shadow: 0 0 16px rgb(247 201 72 / 18%);
+}
+
+.turn-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.55rem;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+}
+
+.turn-badge {
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.turn-card p {
+  margin: 0.25rem 0 0;
+}
+
 .win {
   color: var(--emerald);
 }
@@ -667,10 +940,6 @@ li {
   font-size: 0.86rem;
 }
 
-.log-list {
-  margin-top: 0.55rem;
-}
-
 @keyframes progressPulse {
   0%,
   100% {
@@ -692,6 +961,15 @@ li {
 }
 
 @media (max-width: 780px) {
+  .turn-board {
+    grid-template-columns: 1fr;
+  }
+
+  .lineup-row {
+    grid-template-columns: 1fr;
+    gap: 0.22rem;
+  }
+
   .draft-meta {
     text-align: left;
     width: 100%;
