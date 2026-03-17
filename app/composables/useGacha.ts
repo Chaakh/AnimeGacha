@@ -549,6 +549,7 @@ export function useGacha() {
     recentPulls,
     rarityBreakdown,
     missionProgress,
+    getDailyBoss,
     battle
   }
 }

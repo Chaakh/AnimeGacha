@@ -1,17 +1,79 @@
 <script setup lang="ts">
-const { collectionEntries, battle } = useGacha()
+const { collectionEntries, battle, getDailyBoss } = useGacha()
 
 const selectedIds = ref<string[]>([])
 const outcome = ref<ReturnType<typeof battle> | null>(null)
 
+type CollectionEntry = (typeof collectionEntries.value)[number]
+
+const dailyBoss = computed(() => getDailyBoss())
+
+const selectedEntries = computed<CollectionEntry[]>(() => {
+  return selectedIds.value
+    .map((id) => collectionEntries.value.find((entry) => entry.character.id === id))
+    .filter((entry): entry is CollectionEntry => Boolean(entry))
+})
+
+const projectedPlayerScore = computed(() => {
+  return Math.round(
+    selectedEntries.value.reduce((total, entry) => {
+      const copies = Math.max(entry.count, 1)
+      const bonus = Math.min(copies - 1, 8)
+      return total + entry.character.attack * 1.5 + entry.character.defense + bonus * 7
+    }, 0)
+  )
+})
+
+const projectedBossScore = computed(() => {
+  if (!dailyBoss.value) {
+    return 0
+  }
+  return Math.round(dailyBoss.value.attack * 1.5 + dailyBoss.value.defense)
+})
+
+const matchupLabel = computed(() => {
+  if (!dailyBoss.value) {
+    return 'Boss data unavailable'
+  }
+  if (!selectedIds.value.length) {
+    return 'Pick your first hero to preview raid odds'
+  }
+
+  const delta = projectedPlayerScore.value - projectedBossScore.value
+  if (delta >= 100) {
+    return 'Advantage: Team'
+  }
+  if (delta >= 20) {
+    return 'Even Clash'
+  }
+  return 'Advantage: Boss'
+})
+
+const matchupClass = computed(() => {
+  if (!selectedIds.value.length || !dailyBoss.value) {
+    return 'is-idle'
+  }
+
+  const delta = projectedPlayerScore.value - projectedBossScore.value
+  if (delta >= 100) {
+    return 'is-favored'
+  }
+  if (delta >= 20) {
+    return 'is-even'
+  }
+  return 'is-danger'
+})
+
 function toggleTeam(id: string) {
   if (selectedIds.value.includes(id)) {
     selectedIds.value = selectedIds.value.filter((item) => item !== id)
+    outcome.value = null
     return
   }
 
   if (selectedIds.value.length < 3) {
     selectedIds.value = [...selectedIds.value, id]
+    outcome.value = null
   }
 }
 
@@ -26,31 +88,87 @@ function launchBattle() {
 </script>
 
 <template>
-  <section class="panel battle-head">
-    <div>
-      <h1 class="section-title">Daily Boss Raid</h1>
-      <p class="muted">Assemble up to 3 heroes from your collection to challenge today's villain. Duplicate copies boost your battle power.</p>
+  <section class="panel raid-briefing">
+    <div class="briefing-intro">
+      <p class="eyebrow">Step 1</p>
+      <h1 class="section-title">Raid Briefing: Daily Boss</h1>
+      <p class="muted">Scout the target first, then draft a team built to counter its stats.</p>
     </div>
 
-    <div class="team-stats">
-      <p><strong>{{ selectedIds.length }}</strong> / 3 selected</p>
-      <div class="head-buttons">
-        <button class="button" @click="clearTeam">Clear</button>
-        <button class="button button-main" :disabled="selectedIds.length === 0" @click="launchBattle">Start Battle</button>
+    <p v-if="!dailyBoss" class="muted empty-note">No boss data yet. Pull a pack to populate the raid roster.</p>
+
+    <div v-else class="briefing-body">
+      <div class="boss-card-wrap">
+        <CharacterCard :character="dailyBoss" />
+      </div>
+
+      <div class="boss-dossier">
+        <div class="dossier-top">
+          <h2>{{ dailyBoss.name }}</h2>
+          <span class="threat-chip" :class="`threat-${dailyBoss.rarity.toLowerCase()}`">{{ dailyBoss.rarity }} Threat</span>
+        </div>
+        <p class="muted">{{ dailyBoss.title }} | {{ dailyBoss.element }}</p>
+
+        <div class="boss-metrics">
+          <article>
+            <small>ATK</small>
+            <strong>{{ dailyBoss.attack }}</strong>
+          </article>
+          <article>
+            <small>DEF</small>
+            <strong>{{ dailyBoss.defense }}</strong>
+          </article>
+          <article>
+            <small>Raid Power</small>
+            <strong>{{ projectedBossScore }}</strong>
+          </article>
+        </div>
+
+        <p class="boss-note">Boss stats are scaled for a 3v1 encounter. Duplicate hero copies add bonus score in battle.</p>
       </div>
     </div>
   </section>
 
-  <section class="panel roster">
+  <section class="panel team-draft">
+    <div class="draft-head">
+      <div>
+        <p class="eyebrow">Step 2</p>
+        <h2 class="section-title">Assemble Your Team</h2>
+        <p class="muted">Choose up to 3 heroes from your collection and launch the raid.</p>
+      </div>
+
+      <div class="draft-meta">
+        <p class="slot-count"><strong>{{ selectedIds.length }}</strong> / 3 selected</p>
+        <p class="matchup" :class="matchupClass">{{ matchupLabel }}</p>
+        <p v-if="dailyBoss" class="muted projection">Projected power {{ projectedPlayerScore }} vs {{ projectedBossScore }}</p>
+        <div class="head-buttons">
+          <button class="button" @click="clearTeam">Clear</button>
+          <button class="button button-main" :disabled="selectedIds.length === 0 || !dailyBoss" @click="launchBattle">Start Battle</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="selectedEntries.length" class="selected-strip">
+      <p class="muted strip-label">Current team</p>
+      <div class="selected-chips">
+        <span v-for="entry in selectedEntries" :key="entry.character.id" class="selected-chip">
+          {{ entry.character.name }}
+          <small>x{{ entry.count }}</small>
+        </span>
+      </div>
+    </div>
+
     <p v-if="!collectionEntries.length" class="muted">
       Your roster is empty. Head to <NuxtLink to="/">Summon</NuxtLink> and open some packs first.
     </p>
+
     <div v-else class="roster-grid">
       <button
         v-for="entry in collectionEntries"
         :key="entry.character.id"
         class="pick"
         :class="{ disabled: selectedIds.length >= 3 && !selectedIds.includes(entry.character.id) }"
+        :aria-pressed="selectedIds.includes(entry.character.id)"
         @click="toggleTeam(entry.character.id)"
       >
         <CharacterCard
@@ -63,73 +181,263 @@ function launchBattle() {
   </section>
 
   <section v-if="outcome" class="panel result">
-    <h2 class="section-title">Battle Result</h2>
-    <p class="winner" :class="{ win: outcome.won, loss: !outcome.won }">
-      {{ outcome.won ? 'Victory!' : 'Defeat.' }} Score {{ outcome.playerScore }} - {{ outcome.enemyScore }}
-    </p>
+    <div class="result-head">
+      <h2 class="section-title">Battle Report</h2>
+      <p class="winner" :class="{ win: outcome.won, loss: !outcome.won }">
+        {{ outcome.won ? 'Victory!' : 'Defeat.' }} Score {{ outcome.playerScore }} - {{ outcome.enemyScore }}
+      </p>
+    </div>
 
-    <div class="lineup-wrap">
-      <div>
+    <div class="report-grid">
+      <div class="report-block">
         <h3>Your Team</h3>
         <ul>
           <li v-for="hero in outcome.playerTeam" :key="hero.id">{{ hero.name }} (ATK {{ hero.attack }} | DEF {{ hero.defense }})</li>
         </ul>
       </div>
-      <div class="boss-panel">
+
+      <div class="report-block boss-side">
         <h3>Enemy Boss</h3>
         <ul>
           <li v-for="(enemy, index) in outcome.enemyTeam" :key="`${enemy.id}-${index}`">
-            <strong class="boss-name">{{ enemy.name }}</strong> <br />
-            <span class="boss-stats">(ATK {{ enemy.attack }} | DEF {{ enemy.defense }})</span>
+            <strong class="boss-name">{{ enemy.name }}</strong>
+            <span class="boss-stats">ATK {{ enemy.attack }} | DEF {{ enemy.defense }}</span>
           </li>
         </ul>
       </div>
     </div>
 
     <h3>Round Log</h3>
-    <ul>
+    <ul class="log-list">
       <li v-for="(line, index) in outcome.rounds" :key="index">{{ line }}</li>
     </ul>
   </section>
 </template>
 
 <style scoped>
-.battle-head {
+.eyebrow {
+  margin: 0 0 0.3rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--gold-soft);
+}
+
+.raid-briefing {
+  position: relative;
+  overflow: hidden;
   padding: 1rem;
+  background:
+    radial-gradient(circle at 84% 22%, rgb(255 98 98 / 15%) 0%, transparent 40%),
+    radial-gradient(circle at 6% 82%, rgb(247 201 72 / 10%) 0%, transparent 36%),
+    linear-gradient(180deg, rgb(29 19 22 / 92%) 0%, rgb(11 11 15 / 95%) 100%);
+}
+
+.briefing-intro p {
+  margin-top: 0.35rem;
+}
+
+.empty-note {
+  margin-top: 0.8rem;
+}
+
+.briefing-body {
+  margin-top: 0.85rem;
+  display: grid;
+  grid-template-columns: minmax(220px, 290px) 1fr;
+  gap: 0.95rem;
+}
+
+.boss-card-wrap {
+  max-width: 290px;
+}
+
+.boss-dossier {
+  border: 1px solid rgb(255 120 120 / 24%);
+  border-radius: 12px;
+  padding: 0.9rem;
+  background: linear-gradient(180deg, rgb(30 16 19 / 58%) 0%, rgb(11 11 14 / 75%) 100%);
+}
+
+.dossier-top {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: end;
-  gap: 0.8rem;
+  gap: 0.55rem;
   flex-wrap: wrap;
 }
 
-.battle-head p {
-  margin: 0.35rem 0 0;
+.dossier-top h2 {
+  margin: 0;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: clamp(1.25rem, 2.5vw, 1.65rem);
 }
 
-.team-stats {
+.threat-chip {
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  padding: 0.2rem 0.55rem;
+  font-size: 0.76rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  background: rgb(16 18 28 / 72%);
+}
+
+.threat-common,
+.threat-rare {
+  color: #9ed8ff;
+  border-color: rgb(90 193 253 / 55%);
+}
+
+.threat-epic {
+  color: #efb1ff;
+  border-color: rgb(219 111 255 / 65%);
+}
+
+.threat-legendary {
+  color: #ffe39c;
+  border-color: rgb(247 201 72 / 70%);
+}
+
+.threat-mythic {
+  color: #ffb6f2;
+  border-color: rgb(255 79 216 / 75%);
+}
+
+.boss-dossier p {
+  margin: 0.45rem 0 0;
+}
+
+.boss-metrics {
+  margin-top: 0.8rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.boss-metrics article {
+  border: 1px solid rgb(255 130 130 / 24%);
+  border-radius: 10px;
+  padding: 0.45rem 0.5rem;
+  background: rgb(12 12 18 / 72%);
+}
+
+.boss-metrics small {
+  display: block;
+  color: var(--ink-soft);
+}
+
+.boss-metrics strong {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.14rem;
+}
+
+.boss-note {
+  margin-top: 0.8rem;
+  font-size: 0.87rem;
+  color: #efc7b4;
+}
+
+.team-draft {
+  margin-top: 0.9rem;
+  padding: 1rem;
+}
+
+.draft-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.draft-head p {
+  margin-top: 0.35rem;
+}
+
+.draft-meta {
   text-align: right;
 }
 
-.team-stats p {
+.slot-count {
   margin: 0;
   font-family: 'Rajdhani', sans-serif;
   font-size: 1.05rem;
 }
 
-.head-buttons {
-  margin-top: 0.5rem;
-  display: flex;
-  gap: 0.5rem;
-  justify-content: end;
+.matchup {
+  margin: 0.25rem 0 0;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
-.roster {
-  margin-top: 0.85rem;
-  padding: 1rem;
+.is-idle {
+  color: var(--ink-soft);
+}
+
+.is-favored {
+  color: var(--emerald);
+}
+
+.is-even {
+  color: var(--gold-soft);
+}
+
+.is-danger {
+  color: var(--danger);
+}
+
+.projection {
+  margin: 0.18rem 0 0;
+  font-size: 0.82rem;
+}
+
+.head-buttons {
+  margin-top: 0.45rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.selected-strip {
+  margin: 0.9rem 0 0.7rem;
+}
+
+.strip-label {
+  margin: 0;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.selected-chips {
+  margin-top: 0.4rem;
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.selected-chip {
+  border: 1px solid rgb(247 201 72 / 40%);
+  border-radius: 999px;
+  padding: 0.22rem 0.55rem;
+  background: rgb(25 18 7 / 55%);
+  color: #ffe3a5;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.selected-chip small {
+  margin-left: 0.25rem;
+  color: var(--ink-soft);
+  font-weight: 600;
 }
 
 .roster-grid {
+  margin-top: 0.75rem;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
   gap: 0.75rem;
@@ -148,14 +456,22 @@ function launchBattle() {
 }
 
 .result {
-  margin-top: 0.85rem;
+  margin-top: 0.9rem;
   padding: 1rem;
 }
 
+.result-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .winner {
-  margin: 0.7rem 0;
+  margin: 0;
   font-family: 'Rajdhani', sans-serif;
-  font-size: 1.1rem;
+  font-size: 1.08rem;
 }
 
 .win {
@@ -166,53 +482,76 @@ function launchBattle() {
   color: var(--danger);
 }
 
-.lineup-wrap {
+.report-grid {
+  margin-top: 0.8rem;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.8rem;
 }
 
+.report-block {
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 12px;
+  padding: 0.7rem;
+  background: rgb(12 14 18 / 70%);
+}
+
+.boss-side {
+  border-color: rgb(255 109 109 / 36%);
+  background: linear-gradient(180deg, rgb(32 14 18 / 55%) 0%, rgb(12 12 16 / 75%) 100%);
+}
+
 h3 {
-  margin: 0.75rem 0 0.3rem;
+  margin: 0;
   font-family: 'Rajdhani', sans-serif;
 }
 
 ul {
-  margin: 0;
-  padding-left: 1.1rem;
+  margin: 0.55rem 0 0;
+  padding-left: 1.05rem;
 }
 
 li {
-  margin: 0.3rem 0;
-}
-
-.boss-panel {
-  border-left: 2px solid rgb(255 79 79 / 40%);
-  padding-left: 0.8rem;
+  margin: 0.32rem 0;
 }
 
 .boss-name {
-  color: rgb(255 125 125);
-  font-size: 1.05rem;
+  color: #ff9494;
 }
 
 .boss-stats {
-  font-size: 0.85rem;
-  color: #bbb;
-  margin-left: 0.2rem;
+  margin-left: 0.38rem;
+  color: #ccc;
+  font-size: 0.86rem;
 }
 
-@media (max-width: 780px) {
-  .lineup-wrap {
+.log-list {
+  margin-top: 0.55rem;
+}
+
+@media (max-width: 920px) {
+  .briefing-body {
     grid-template-columns: 1fr;
   }
 
-  .team-stats {
+  .boss-card-wrap {
+    width: min(100%, 320px);
+  }
+}
+
+@media (max-width: 780px) {
+  .draft-meta {
     text-align: left;
+    width: 100%;
   }
 
   .head-buttons {
-    justify-content: start;
+    justify-content: flex-start;
+  }
+
+  .report-grid,
+  .boss-metrics {
+    grid-template-columns: 1fr;
   }
 }
 </style>
