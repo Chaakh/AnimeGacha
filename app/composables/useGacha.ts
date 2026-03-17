@@ -160,6 +160,9 @@ function normalizeSave(raw: unknown): SaveState {
 }
 
 export function useGacha() {
+  const runtimeConfig = useRuntimeConfig()
+  const apiBase = runtimeConfig.public.apiBase?.trim()
+
   const save = useState<SaveState>('gacha-save', () => ({
     lastResetDate: getTodayKey(),
     packsRemaining: DAILY_PACKS,
@@ -198,7 +201,9 @@ export function useGacha() {
 
     isLoadingPool.value = true
     try {
-      const response = await $fetch<{ characters?: unknown[]; source?: string }>('/api/gacha/pool')
+      const response = await $fetch<{ characters?: unknown[]; source?: string }>('/api/gacha/pool', {
+        baseURL: apiBase || undefined
+      })
       const characters = (response.characters || []).map(normalizeCharacter).filter((entry): entry is Character => Boolean(entry))
       if (characters.length) {
         remotePool.value = characters
@@ -300,6 +305,7 @@ export function useGacha() {
 
     try {
       const response = await $fetch<{ pulls?: unknown[]; source?: string }>('/api/gacha/summon', {
+        baseURL: apiBase || undefined,
         method: 'POST',
         body: { count: PACK_SIZE }
       })
@@ -343,6 +349,7 @@ export function useGacha() {
 
     try {
       const response = await $fetch<{ pulls?: unknown[]; source?: string }>('/api/gacha/summon', {
+        baseURL: apiBase || undefined,
         method: 'POST',
         body: { count: safePacks * PACK_SIZE }
       })

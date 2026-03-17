@@ -1,0 +1,18 @@
+[Unit]
+Description=AnimeGacha Nuxt API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gooseberry
+WorkingDirectory=/home/gooseberry/webgames/AnimeGacha
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=CORS_ORIGINS=https://YOUR_GITHUB_USERNAME.github.io
+ExecStart=/usr/bin/node /home/gooseberry/webgames/AnimeGacha/.output/server/index.mjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

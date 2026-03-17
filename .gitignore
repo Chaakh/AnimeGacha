@@ -8,6 +8,7 @@ node_modules/
 .data/
 .cache/
 dist/
+dist
 
 # Test and coverage artifacts
 coverage/

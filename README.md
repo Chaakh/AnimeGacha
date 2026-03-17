@@ -1,6 +1,14 @@
-# Nuxt Minimal Starter
+# AnimeGacha
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Anime-themed gacha web app built with Nuxt 4.
+
+## Production topology (same style as TheMind)
+
+- Frontend: GitHub Pages (static output from `npm run generate`)
+- Backend API: this repo running on your VPS (`node .output/server/index.mjs`)
+- Public API domain: DuckDNS + nginx + certbot
+
+For full VPS + Pages instructions, see `deploy/SETUP.md`.
 
 ## Setup
 
@@ -72,4 +80,10 @@ yarn preview
 bun run preview
 ```
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+## GitHub Pages variable required
+
+Add this repository variable before running the Pages workflow:
+
+```text
+NUXT_PUBLIC_API_BASE=https://your-subdomain.duckdns.org
+```
