@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { collectionEntries, battle, getDailyBoss } = useGacha()
+const { collectionEntries, battle, getDailyBoss, save } = useGacha()
 
 const selectedIds = ref<string[]>([])
 const outcome = ref<ReturnType<typeof battle> | null>(null)
@@ -22,6 +22,8 @@ const revealedTurns = ref<BattleTurn[]>([])
 type CollectionEntry = (typeof collectionEntries.value)[number]
 
 const dailyBoss = computed(() => getDailyBoss())
+const dailyBattleDone = computed(() => save.value.dailyBattleDone)
+const dailyBattleWon = computed(() => save.value.dailyBattleWon)
 
 const selectedEntries = computed<CollectionEntry[]>(() => {
   return selectedIds.value
@@ -339,6 +341,22 @@ async function launchBattle() {
         </ul>
       </div>
     </div>
+
+    <div v-if="outcome?.won" class="reward-banner">
+      <span class="reward-icon">🎁</span>
+      <div>
+        <strong>Raid Reward Claimed!</strong>
+        <p>+2 bonus packs have been added to your daily packs.</p>
+      </div>
+    </div>
+
+    <div v-if="outcome && !outcome.won" class="defeat-banner">
+      <span class="reward-icon">💀</span>
+      <div>
+        <strong>Defeat</strong>
+        <p>Your team wasn't strong enough. Try again tomorrow with a better lineup.</p>
+      </div>
+    </div>
   </section>
 
   <section class="panel raid-briefing">
@@ -396,10 +414,17 @@ async function launchBattle() {
         <p v-if="dailyBoss" class="muted projection">Projected power {{ projectedPlayerScore }} vs {{ projectedBossScore }}</p>
         <div class="head-buttons">
           <button class="button" :disabled="isBattling" @click="clearTeam">Clear</button>
-          <button class="button button-main" :disabled="selectedIds.length === 0 || !dailyBoss || isBattling" @click="launchBattle">
-            {{ isBattling ? 'Battling...' : 'Start Battle' }}
+          <button
+            class="button button-main"
+            :disabled="selectedIds.length === 0 || !dailyBoss || isBattling || dailyBattleDone"
+            @click="launchBattle"
+          >
+            {{ dailyBattleDone ? (dailyBattleWon ? 'Raid Won ✓' : 'Raid Lost ✗') : isBattling ? 'Battling...' : 'Start Battle' }}
           </button>
         </div>
+        <p v-if="dailyBattleDone && !outcome" class="muted raid-done-note">
+          {{ dailyBattleWon ? 'You defeated today\'s boss! +2 bonus packs awarded.' : 'Boss defeated you today. Try again tomorrow!' }}
+        </p>
       </div>
     </div>
 
@@ -914,6 +939,55 @@ async function launchBattle() {
 .boss-side {
   border-color: rgb(255 109 109 / 36%);
   background: linear-gradient(180deg, rgb(32 14 18 / 55%) 0%, rgb(12 12 16 / 75%) 100%);
+}
+
+.reward-banner,
+.defeat-banner {
+  margin-top: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+}
+
+.reward-banner {
+  border: 1px solid rgb(102 217 139 / 50%);
+  background: linear-gradient(135deg, rgb(14 32 20 / 80%) 0%, rgb(10 24 14 / 85%) 100%);
+}
+
+.defeat-banner {
+  border: 1px solid rgb(255 109 109 / 40%);
+  background: linear-gradient(135deg, rgb(32 14 18 / 75%) 0%, rgb(20 10 14 / 80%) 100%);
+}
+
+.reward-banner strong {
+  color: var(--emerald);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.05rem;
+}
+
+.defeat-banner strong {
+  color: var(--danger);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.05rem;
+}
+
+.reward-banner p,
+.defeat-banner p {
+  margin: 0.15rem 0 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.reward-icon {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+}
+
+.raid-done-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.84rem;
 }
 
 h3 {

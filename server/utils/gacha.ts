@@ -30,10 +30,10 @@ let cachedAt = 0
 
 const rarityMeta: Record<Rarity, { weight: number; bonus: number }> = {
   Common: { weight: 52, bonus: 0 },
-  Rare: { weight: 27, bonus: 8 },
-  Epic: { weight: 12, bonus: 16 },
-  Legendary: { weight: 7, bonus: 24 },
-  Mythic: { weight: 2, bonus: 32 }
+  Rare: { weight: 27, bonus: 6 },
+  Epic: { weight: 12, bonus: 14 },
+  Legendary: { weight: 7, bonus: 22 },
+  Mythic: { weight: 2, bonus: 30 }
 }
 
 const fallbackPool: Character[] = [
@@ -148,8 +148,8 @@ function mapTopCharacterToCard(character: JikanCharacter, rank: number, total: n
   const jitterD = (seed * 3) % 11
 
   const normalizedFav = Math.log10(Math.max(1, favorites))
-  const attack = clamp(Math.round(normalizedFav * 11 + 30 + bonus + jitterA), 30, 99)
-  const defense = clamp(Math.round(normalizedFav * 10 + 26 + bonus * 0.8 + jitterD), 25, 95)
+  const attack = clamp(Math.round(normalizedFav * 4.5 + 28 + bonus + jitterA), 25, 99)
+  const defense = clamp(Math.round(normalizedFav * 4 + 22 + bonus * 0.8 + jitterD), 20, 95)
   const element = normalizeElement(character)
   const alias = character.nicknames?.[0] || 'Elite Fighter'
   const imageUrl =

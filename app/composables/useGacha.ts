@@ -16,6 +16,8 @@ interface SaveState {
   packsRemaining: number
   dailyPulls: number
   dailyHighRarityPulls: number
+  dailyBattleDone: boolean
+  dailyBattleWon: boolean
   collection: Record<string, number>
   pullLog: string[]
 }
@@ -125,6 +127,8 @@ function normalizeSave(raw: unknown): SaveState {
     packsRemaining: DAILY_PACKS,
     dailyPulls: 0,
     dailyHighRarityPulls: 0,
+    dailyBattleDone: false,
+    dailyBattleWon: false,
     collection: {},
     pullLog: []
   }
@@ -148,6 +152,8 @@ function normalizeSave(raw: unknown): SaveState {
       typeof candidate.dailyHighRarityPulls === 'number' && candidate.dailyHighRarityPulls >= 0
         ? candidate.dailyHighRarityPulls
         : fallback.dailyHighRarityPulls,
+    dailyBattleDone: typeof candidate.dailyBattleDone === 'boolean' ? candidate.dailyBattleDone : false,
+    dailyBattleWon: typeof candidate.dailyBattleWon === 'boolean' ? candidate.dailyBattleWon : false,
     collection: candidate.collection && typeof candidate.collection === 'object' ? candidate.collection : {},
     pullLog: Array.isArray(candidate.pullLog) ? candidate.pullLog.filter((id) => typeof id === 'string').slice(0, 20) : []
   }
@@ -159,6 +165,8 @@ export function useGacha() {
     packsRemaining: DAILY_PACKS,
     dailyPulls: 0,
     dailyHighRarityPulls: 0,
+    dailyBattleDone: false,
+    dailyBattleWon: false,
     collection: {},
     pullLog: []
   }))
@@ -178,6 +186,8 @@ export function useGacha() {
       save.value.packsRemaining = DAILY_PACKS
       save.value.dailyPulls = 0
       save.value.dailyHighRarityPulls = 0
+      save.value.dailyBattleDone = false
+      save.value.dailyBattleWon = false
     }
   }
 
@@ -419,6 +429,11 @@ export function useGacha() {
   }
 
   function battle(teamIds: string[]): BattleOutcome | null {
+    applyDailyReset()
+    if (save.value.dailyBattleDone) {
+      return null
+    }
+
     const uniqueIds = Array.from(new Set(teamIds)).slice(0, 3)
     const playerTeam = uniqueIds.map((id) => getCharacter(id)).filter((item): item is Character => Boolean(item))
     if (!playerTeam.length) {
@@ -446,6 +461,18 @@ export function useGacha() {
     rounds.push(`The Raid Boss, ${boss.name}, unleashes an attack with ${Math.round(enemyScore)} power!`)
 
     const won = playerScore >= enemyScore
+
+    // Mark daily battle as done
+    save.value.dailyBattleDone = true
+    save.value.dailyBattleWon = won
+
+    // Grant 2 bonus packs on victory
+    if (won) {
+      save.value.packsRemaining += 2
+      rounds.push('Victory! You earned 2 bonus packs as a raid reward!')
+    } else {
+      rounds.push('Defeat. Try again tomorrow with a stronger team.')
+    }
 
     return {
       playerTeam,
@@ -527,9 +554,9 @@ export function useGacha() {
       },
       battleWin: {
         label: 'Win one battle',
-        current: 0,
+        current: save.value.dailyBattleWon ? 1 : 0,
         target: 1,
-        done: false
+        done: save.value.dailyBattleWon
       }
     }
   })
