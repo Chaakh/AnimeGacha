@@ -391,6 +391,33 @@ export function useGacha() {
     return activePool().find((item) => item.id === id) ?? null
   }
 
+  function getDailyBoss(): Character | null {
+    const pool = activePool()
+    if (!pool.length) return null
+
+    const today = getTodayKey()
+    const seed = today.split('-').reduce((sum, str) => sum + parseInt(str, 10), 0)
+    
+    // Look for notorious villains in the fetched character pool by matching partial names/titles
+    const villainNames = ['madara', 'dio ', 'aizen', 'frieza', 'meruem', 'johan ', 'muzan', 'doflamingo', 'gilgamesh', 'shigaraki', 'chrollo', 'sukuna', 'blackbeard', 'orochimaru', 'griffith', 'hisoka', 'cell', 'buu', 'kaido', 'big mom', 'pain']
+    const villains = pool.filter(c => villainNames.some(v => c.name.toLowerCase().includes(v) || c.title.toLowerCase().includes(v)))
+    
+    // Fallback to Legendaries/Mythics if no named villain is present
+    const bossPool = villains.length ? villains : pool.filter(c => c.rarity === 'Mythic' || c.rarity === 'Legendary')
+    const finalPool = bossPool.length ? bossPool : pool
+    
+    const base = finalPool[seed % finalPool.length]
+    if (!base) return null
+    
+    // Scale boss to be a 3v1 raid boss
+    return {
+      ...base,
+      attack: Math.round(base.attack * 3 + 80),
+      defense: Math.round(base.defense * 3 + 80),
+      title: 'Daily Raid Boss'
+    }
+  }
+
   function battle(teamIds: string[]): BattleOutcome | null {
     const uniqueIds = Array.from(new Set(teamIds)).slice(0, 3)
     const playerTeam = uniqueIds.map((id) => getCharacter(id)).filter((item): item is Character => Boolean(item))
@@ -398,40 +425,31 @@ export function useGacha() {
       return null
     }
 
-    const basePool = activePool()
-    const enemyTeam = Array.from({ length: playerTeam.length }, () => randomCharacter(basePool))
+    const boss = getDailyBoss()
+    if (!boss) return null
 
     const rounds: string[] = []
     let playerScore = 0
-    let enemyScore = 0
+    // Boss score scales with a bit of RNG
+    let enemyScore = boss.attack * 1.5 + boss.defense + randomInt(60)
 
-    playerTeam.forEach((hero, index) => {
-      const enemy = enemyTeam[index]
-      if (!enemy) {
-        return
-      }
-
+    playerTeam.forEach((hero) => {
       const copies = save.value.collection[hero.id] ?? 1
       const bonus = Math.min(copies - 1, 8)
 
-      const heroPower = hero.attack * 1.25 + hero.defense + bonus * 4 + randomInt(14)
-      const enemyPower = enemy.attack * 1.25 + enemy.defense + randomInt(14)
-
+      const heroPower = hero.attack * 1.5 + hero.defense + bonus * 7 + randomInt(20)
       playerScore += heroPower
-      enemyScore += enemyPower
 
-      const line =
-        heroPower >= enemyPower
-          ? `${hero.name} outplays ${enemy.name}.`
-          : `${enemy.name} overwhelms ${hero.name}.`
-      rounds.push(line)
+      rounds.push(`${hero.name} strikes for ${Math.round(heroPower)} power!`)
     })
+    
+    rounds.push(`The Raid Boss, ${boss.name}, unleashes an attack with ${Math.round(enemyScore)} power!`)
 
     const won = playerScore >= enemyScore
 
     return {
       playerTeam,
-      enemyTeam,
+      enemyTeam: [boss],
       playerScore: Math.round(playerScore),
       enemyScore: Math.round(enemyScore),
       won,

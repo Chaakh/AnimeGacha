@@ -28,8 +28,8 @@ function launchBattle() {
 <template>
   <section class="panel battle-head">
     <div>
-      <h1 class="section-title">Battle Arena</h1>
-      <p class="muted">Pick up to 3 heroes from your collection. Duplicate copies boost their battle power.</p>
+      <h1 class="section-title">Daily Boss Raid</h1>
+      <p class="muted">Assemble up to 3 heroes from your collection to challenge today's villain. Duplicate copies boost your battle power.</p>
     </div>
 
     <div class="team-stats">
@@ -75,11 +75,12 @@ function launchBattle() {
           <li v-for="hero in outcome.playerTeam" :key="hero.id">{{ hero.name }} (ATK {{ hero.attack }} | DEF {{ hero.defense }})</li>
         </ul>
       </div>
-      <div>
-        <h3>Enemy Team</h3>
+      <div class="boss-panel">
+        <h3>Enemy Boss</h3>
         <ul>
           <li v-for="(enemy, index) in outcome.enemyTeam" :key="`${enemy.id}-${index}`">
-            {{ enemy.name }} (ATK {{ enemy.attack }} | DEF {{ enemy.defense }})
+            <strong class="boss-name">{{ enemy.name }}</strong> <br />
+            <span class="boss-stats">(ATK {{ enemy.attack }} | DEF {{ enemy.defense }})</span>
           </li>
         </ul>
       </div>
@@ -183,6 +184,22 @@ ul {
 
 li {
   margin: 0.3rem 0;
+}
+
+.boss-panel {
+  border-left: 2px solid rgb(255 79 79 / 40%);
+  padding-left: 0.8rem;
+}
+
+.boss-name {
+  color: rgb(255 125 125);
+  font-size: 1.05rem;
+}
+
+.boss-stats {
+  font-size: 0.85rem;
+  color: #bbb;
+  margin-left: 0.2rem;
 }
 
 @media (max-width: 780px) {
