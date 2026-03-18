@@ -1,14 +1,23 @@
 <script setup lang="ts">
-const { save, pullPack, pullMany, recentPulls, rarityMeta, missionProgress, isLoadingPool, poolSource, addDevPacks } = useGacha()
+const { save, pullPack, pullMany, recentPulls, rarityMeta, missionProgress, isLoadingPool, poolSource, addDevPacks, refillPacksFromAd } = useGacha()
+
+declare global {
+  interface Window {
+    anigackaShowRewardedAd?: () => Promise<boolean> | boolean
+  }
+}
 
 const reveal = ref<Awaited<ReturnType<typeof pullPack>> | null>(null)
 const isSummoning = ref(false)
 const isOpeningPack = ref(false)
+const isWatchingAd = ref(false)
 const showReveal = ref(false)
 const isDev = import.meta.dev
+const refillStatus = ref<'idle' | 'success' | 'error'>('idle')
 const activeCardIndex = ref(0)
 const missionEntries = computed(() => Object.values(missionProgress.value))
 const goldCounter = computed(() => Math.max(10 - save.value.dailyPulls, 0))
+const hasRewardedAdHook = computed(() => import.meta.client && typeof window.anigackaShowRewardedAd === 'function')
 const FALLBACK_IMAGE = 'https://cdn.myanimelist.net/images/questionmark_23.gif'
 
 function resolveImage(url: string) {
@@ -54,6 +63,17 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+async function playRewardedAd() {
+  if (import.meta.client && typeof window.anigackaShowRewardedAd === 'function') {
+    const watched = await window.anigackaShowRewardedAd()
+    return watched !== false
+  }
+
+  // Fallback so local/dev environments can test refill behavior without ad SDK wiring.
+  await sleep(2500)
+  return true
+}
+
 function closeReveal() {
   showReveal.value = false
   reveal.value = null
@@ -65,6 +85,7 @@ async function summonOne() {
   }
 
   isSummoning.value = true
+  refillStatus.value = 'idle'
   isOpeningPack.value = true
   const [result] = await Promise.all([pullPack(), sleep(1000)])
   reveal.value = result
@@ -80,6 +101,7 @@ async function summonAll() {
   }
 
   isSummoning.value = true
+  refillStatus.value = 'idle'
   isOpeningPack.value = true
   const [results] = await Promise.all([pullMany(save.value.packsRemaining), sleep(1000)])
   reveal.value = results.length ? results.flat() : null
@@ -87,6 +109,29 @@ async function summonAll() {
   showReveal.value = Boolean(reveal.value?.length)
   isOpeningPack.value = false
   isSummoning.value = false
+}
+
+async function watchAdAndRefill() {
+  if (isWatchingAd.value || save.value.packsRemaining > 0 || save.value.dailyAdRefillUsed) {
+    return
+  }
+
+  refillStatus.value = 'idle'
+  isWatchingAd.value = true
+
+  try {
+    const adCompleted = await playRewardedAd()
+    if (!adCompleted) {
+      refillStatus.value = 'error'
+      return
+    }
+
+    refillStatus.value = refillPacksFromAd() ? 'success' : 'error'
+  } catch {
+    refillStatus.value = 'error'
+  } finally {
+    isWatchingAd.value = false
+  }
 }
 </script>
 
@@ -162,6 +207,22 @@ async function summonAll() {
       <button class="button button-main" :disabled="save.packsRemaining <= 0 || isSummoning || isLoadingPool" @click="summonOne">Open 1 Pack</button>
       <button class="button" :disabled="save.packsRemaining <= 0 || isSummoning || isLoadingPool" @click="summonAll">Open All ({{ save.packsRemaining }})</button>
       <button v-if="isDev" class="button dev-button" :disabled="isSummoning || isLoadingPool" @click="addDevPacks(10)">+10 Packs (Dev)</button>
+    </div>
+    <div v-if="save.packsRemaining <= 0" class="panel refill-zone">
+      <p class="refill-title">Out of Packs</p>
+      <button
+        class="button button-refill"
+        :disabled="isSummoning || isLoadingPool || isWatchingAd || save.dailyAdRefillUsed"
+        @click="watchAdAndRefill"
+      >
+        {{ save.dailyAdRefillUsed ? 'Ad Refill Claimed Today' : isWatchingAd ? 'Watching Rewarded Ad...' : 'Watch Ad Video to Refill 10 Packs' }}
+      </button>
+      <p class="muted refill-note">
+        {{ save.dailyAdRefillUsed ? 'Daily ad refill already used. Try again after reset.' : 'Complete the ad video to unlock your refill reward.' }}
+      </p>
+      <p v-if="refillStatus === 'success'" class="refill-success">Ad complete. Your 10 packs were refilled.</p>
+      <p v-else-if="refillStatus === 'error'" class="refill-error">Ad was skipped or unavailable. No refill granted.</p>
+      <p v-if="!hasRewardedAdHook" class="muted refill-dev-note">Rewarded ad SDK hook not detected; using demo ad flow.</p>
     </div>
     <p class="muted source">Data source: {{ poolSource }}</p>
   </section>
@@ -416,6 +477,49 @@ async function summonAll() {
   display: flex;
   gap: 0.7rem;
   flex-wrap: wrap;
+}
+
+.refill-zone {
+  width: min(760px, 94vw);
+  padding: 0.9rem;
+  display: grid;
+  justify-items: center;
+  gap: 0.42rem;
+}
+
+.refill-title {
+  margin: 0;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.button-refill {
+  border-color: rgb(76 198 152 / 48%);
+  background: linear-gradient(180deg, rgb(21 56 47 / 92%) 0%, rgb(11 28 23 / 96%) 100%);
+  color: #b7ffe2;
+}
+
+.button-refill:hover {
+  border-color: rgb(106 240 190 / 72%);
+  box-shadow: 0 12px 24px rgb(76 198 152 / 20%);
+}
+
+.refill-note,
+.refill-success,
+.refill-error,
+.refill-dev-note {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.refill-success {
+  color: var(--emerald);
+}
+
+.refill-error {
+  color: var(--danger);
 }
 
 .dev-button {

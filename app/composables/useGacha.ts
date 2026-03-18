@@ -16,6 +16,7 @@ interface SaveState {
   packsRemaining: number
   dailyPulls: number
   dailyHighRarityPulls: number
+  dailyAdRefillUsed: boolean
   dailyBattleDone: boolean
   dailyBattleWon: boolean
   collection: Record<string, number>
@@ -127,6 +128,7 @@ function normalizeSave(raw: unknown): SaveState {
     packsRemaining: DAILY_PACKS,
     dailyPulls: 0,
     dailyHighRarityPulls: 0,
+    dailyAdRefillUsed: false,
     dailyBattleDone: false,
     dailyBattleWon: false,
     collection: {},
@@ -152,6 +154,7 @@ function normalizeSave(raw: unknown): SaveState {
       typeof candidate.dailyHighRarityPulls === 'number' && candidate.dailyHighRarityPulls >= 0
         ? candidate.dailyHighRarityPulls
         : fallback.dailyHighRarityPulls,
+    dailyAdRefillUsed: typeof candidate.dailyAdRefillUsed === 'boolean' ? candidate.dailyAdRefillUsed : false,
     dailyBattleDone: typeof candidate.dailyBattleDone === 'boolean' ? candidate.dailyBattleDone : false,
     dailyBattleWon: typeof candidate.dailyBattleWon === 'boolean' ? candidate.dailyBattleWon : false,
     collection: candidate.collection && typeof candidate.collection === 'object' ? candidate.collection : {},
@@ -168,6 +171,7 @@ export function useGacha() {
     packsRemaining: DAILY_PACKS,
     dailyPulls: 0,
     dailyHighRarityPulls: 0,
+    dailyAdRefillUsed: false,
     dailyBattleDone: false,
     dailyBattleWon: false,
     collection: {},
@@ -189,6 +193,7 @@ export function useGacha() {
       save.value.packsRemaining = DAILY_PACKS
       save.value.dailyPulls = 0
       save.value.dailyHighRarityPulls = 0
+      save.value.dailyAdRefillUsed = false
       save.value.dailyBattleDone = false
       save.value.dailyBattleWon = false
     }
@@ -261,6 +266,17 @@ export function useGacha() {
 
     const safeCount = Math.max(0, Math.floor(count))
     save.value.packsRemaining += safeCount
+  }
+
+  function refillPacksFromAd() {
+    applyDailyReset()
+    if (save.value.packsRemaining > 0 || save.value.dailyAdRefillUsed) {
+      return false
+    }
+
+    save.value.packsRemaining = DAILY_PACKS
+    save.value.dailyAdRefillUsed = true
+    return true
   }
 
   function localSummonPick() {
@@ -577,6 +593,7 @@ export function useGacha() {
     ensureInitialized,
     loadCharacterPool,
     addDevPacks,
+    refillPacksFromAd,
     pullPack,
     pullMany,
     collectionEntries,
