@@ -1,19 +1,12 @@
 <template>
   <header class="nav-wrap">
     <div class="nav-inner">
-      <span class="left-icon" aria-hidden="true">JP</span>
-
       <nav class="links" aria-label="Primary navigation">
         <NuxtLink class="link" to="/">Summon</NuxtLink>
         <NuxtLink class="link" to="/collection">Collection</NuxtLink>
         <NuxtLink class="link" to="/battle">Battle</NuxtLink>
         <NuxtLink class="link" to="/pvp">PvP</NuxtLink>
       </nav>
-
-      <div class="actions" aria-hidden="true">
-        <span class="icon">🏆</span>
-        <span class="icon alt">?</span>
-      </div>
     </div>
   </header>
 </template>
@@ -34,22 +27,9 @@
   min-height: 64px;
   padding: 0.55rem 0.4rem;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   gap: 0.5rem;
-}
-
-.left-icon {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  border: 1px solid rgb(255 207 102 / 26%);
-  color: #ffcd5a;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 0.86rem;
-  font-weight: 700;
 }
 
 .links {
@@ -74,26 +54,6 @@
 .router-link-active {
   color: #f8cf6f;
   border-color: #f8cf6f;
-}
-
-.actions {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.icon {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  border: 1px solid rgb(255 255 255 / 14%);
-  background: rgb(255 255 255 / 2%);
-}
-
-.icon.alt {
-  font-family: 'Rajdhani', sans-serif;
-  font-weight: 700;
 }
 
 @media (max-width: 680px) {
