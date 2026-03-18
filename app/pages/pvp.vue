@@ -171,7 +171,18 @@ function errorText(error: unknown, fallback: string) {
     return fallback
   }
   const candidate = error as { data?: { statusMessage?: string }; message?: string }
-  return candidate.data?.statusMessage || candidate.message || fallback
+  const baseMessage = candidate.data?.statusMessage || candidate.message || fallback
+  const normalized = baseMessage.toLowerCase()
+
+  if (
+    normalized.includes('/api/pvp/lobby/create') ||
+    normalized.includes('/api/pvp/lobby/join') ||
+    normalized.includes('/api/pvp/lobby/')
+  ) {
+    return 'PvP API route was not found. Deploy/restart the backend with the latest code and verify NUXT_PUBLIC_API_BASE points to your backend domain.'
+  }
+
+  return baseMessage
 }
 
 async function fetchLobbyState(showErrors = false) {
