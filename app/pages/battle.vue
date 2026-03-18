@@ -17,6 +17,8 @@ interface BattleTurn {
   actor: 'hero' | 'boss'
   actorName: string
   actorImageUrl: string
+  actorId: string | null
+  targetId: string | null
   text: string
   turnNumber: number
   power: number
@@ -98,6 +100,8 @@ const activeTeam = computed(() => {
   return selectedEntries.value.map((entry) => entry.character)
 })
 
+const FALLBACK_IMAGE = 'https://cdn.myanimelist.net/images/questionmark_23.gif'
+
 const visibleTurns = computed(() => {
   if (isBattling.value) {
     return revealedTurns.value
@@ -143,21 +147,46 @@ function extractPower(text: string): number {
   return match ? parseInt(match[1], 10) : 0
 }
 
+function resolveImage(url: string) {
+  return url || FALLBACK_IMAGE
+}
+
+function onCardImageError(event: Event) {
+  const target = event.target as HTMLImageElement | null
+  if (!target) {
+    return
+  }
+
+  if (target.src !== FALLBACK_IMAGE) {
+    target.src = FALLBACK_IMAGE
+  }
+}
+
 function toBattleTurns(result: NonNullable<ReturnType<typeof battle>>): BattleTurn[] {
   const boss = result.enemyTeam[0]
   const bossName = boss?.name ?? 'Raid Boss'
   const bossImage = boss?.imageUrl ?? ''
+  let bossTargetCursor = 0
 
   return result.rounds.map((line, index) => {
     const lowered = line.toLowerCase()
     const isBossTurn = lowered.includes('raid boss') || lowered.includes('boss')
     const matchedHero = result.playerTeam.find((hero) => line.startsWith(hero.name))
+    const fallbackHero = result.playerTeam[index % Math.max(result.playerTeam.length, 1)]
+    const actingHero = matchedHero ?? fallbackHero
+    const targetHero = result.playerTeam.length ? result.playerTeam[bossTargetCursor % result.playerTeam.length] : null
+
+    if (isBossTurn) {
+      bossTargetCursor += 1
+    }
 
     return {
       id: `${index}-${line}`,
       actor: isBossTurn ? 'boss' : 'hero',
-      actorName: isBossTurn ? bossName : matchedHero?.name ?? 'Hero Squad',
-      actorImageUrl: isBossTurn ? bossImage : (matchedHero?.imageUrl ?? ''),
+      actorName: isBossTurn ? bossName : actingHero?.name ?? 'Hero Squad',
+      actorImageUrl: isBossTurn ? bossImage : (actingHero?.imageUrl ?? ''),
+      actorId: isBossTurn ? (boss?.id ?? 'raid-boss') : (actingHero?.id ?? null),
+      targetId: isBossTurn ? targetHero?.id ?? null : (boss?.id ?? 'raid-boss'),
       text: line,
       turnNumber: index + 1,
       power: extractPower(line)
@@ -288,33 +317,73 @@ async function launchBattle() {
         {{ outcome.won ? '🏆 Victory!' : '💀 Defeat.' }} Score {{ outcome.playerScore }} - {{ outcome.enemyScore }}
       </p>
     </div>
-
-    <!-- Clash Stage -->
-    <div class="clash-stage" :class="{ 'flash-hero': flashSide === 'hero', 'flash-boss': flashSide === 'boss' }">
-      <div class="clash-side hero-side">
-        <div v-if="currentTurn?.actor === 'hero' && currentTurn.actorImageUrl" class="clash-portrait-wrap">
-          <img :src="currentTurn.actorImageUrl" :alt="currentTurn.actorName" class="clash-portrait" />
-        </div>
-        <div v-else class="clash-portrait-wrap clash-placeholder">
-          <span>⚔️</span>
-        </div>
-        <p class="clash-name">{{ currentTurn?.actor === 'hero' ? currentTurn.actorName : 'Heroes' }}</p>
+    <!-- Card Battle Stage -->
+    <div class="board-stage" :class="{ 'flash-hero': flashSide === 'hero', 'flash-boss': flashSide === 'boss' }">
+      <div class="board-row boss-row">
+        <article
+          class="battle-card boss-card"
+          :class="{
+            attacking: currentTurn?.actor === 'boss' && currentTurn?.power > 0,
+            targeted: currentTurn?.targetId === activeBoss?.id && currentTurn?.power > 0
+          }"
+        >
+          <img
+            class="battle-card-image"
+            :src="resolveImage(activeBoss?.imageUrl ?? '')"
+            :alt="activeBoss?.name ?? 'Raid Boss'"
+            loading="lazy"
+            @error="onCardImageError"
+          />
+          <div class="battle-card-overlay">
+            <strong>{{ activeBoss?.name ?? 'Raid Boss' }}</strong>
+            <span>{{ activeBoss?.rarity ?? 'Boss' }} Threat</span>
+            <div class="battle-mini-stats">
+              <span>ATK {{ activeBoss?.attack ?? 0 }}</span>
+              <span>DEF {{ activeBoss?.defense ?? 0 }}</span>
+            </div>
+          </div>
+        </article>
       </div>
 
-      <div class="clash-center">
-        <span class="vs-badge">VS</span>
-        <p v-if="currentTurn" class="turn-counter">Turn {{ currentTurn.turnNumber }}/{{ battleTurns.length }}</p>
-        <p v-else class="turn-counter">Preparing...</p>
+      <div class="board-impact">
+        <div class="impact-line" />
+        <p class="impact-text">
+          <span v-if="currentTurn">
+            Turn {{ currentTurn.turnNumber }}/{{ battleTurns.length }}:
+            {{ currentTurn.actorName }} attacks
+            <strong v-if="currentTurn.power > 0">{{ ` ${currentTurn.power} PWR` }}</strong>
+          </span>
+          <span v-else>Units are entering the board...</span>
+        </p>
       </div>
 
-      <div class="clash-side boss-side-stage">
-        <div v-if="activeBoss?.imageUrl" class="clash-portrait-wrap boss-portrait-wrap">
-          <img :src="activeBoss.imageUrl" :alt="activeBoss.name" class="clash-portrait" />
-        </div>
-        <div v-else class="clash-portrait-wrap clash-placeholder">
-          <span>👹</span>
-        </div>
-        <p class="clash-name boss-label">{{ activeBoss?.name ?? 'Raid Boss' }}</p>
+      <div class="board-row hero-row">
+        <article
+          v-for="hero in activeTeam"
+          :key="hero.id"
+          class="battle-card hero-card"
+          :class="{
+            attacking: currentTurn?.actor === 'hero' && currentTurn?.actorId === hero.id && currentTurn?.power > 0,
+            targeted: currentTurn?.actor === 'boss' && currentTurn?.targetId === hero.id && currentTurn?.power > 0,
+            standby: currentTurn?.actor === 'hero' && currentTurn?.actorId !== hero.id
+          }"
+        >
+          <img
+            class="battle-card-image"
+            :src="resolveImage(hero.imageUrl)"
+            :alt="hero.name"
+            loading="lazy"
+            @error="onCardImageError"
+          />
+          <div class="battle-card-overlay">
+            <strong>{{ hero.name }}</strong>
+            <span>{{ hero.rarity }} Hero</span>
+            <div class="battle-mini-stats">
+              <span>ATK {{ hero.attack }}</span>
+              <span>DEF {{ hero.defense }}</span>
+            </div>
+          </div>
+        </article>
       </div>
     </div>
 
@@ -817,108 +886,180 @@ async function launchBattle() {
 .progress-shell.active .progress-track span {
   animation: progressPulse 1s ease-in-out infinite;
 }
-
-/* ─── Clash Stage ─── */
-.clash-stage {
+/* Board Stage */
+.board-stage {
   margin-top: 0.85rem;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 0.5rem;
-  align-items: center;
+  gap: 0.55rem;
   padding: 0.75rem;
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 14px;
-  background: radial-gradient(circle at 50% 50%, rgb(20 20 30 / 90%) 0%, rgb(10 10 16 / 95%) 100%);
-  transition: box-shadow 0.3s ease;
+  background:
+    radial-gradient(circle at 50% -8%, rgb(245 196 80 / 16%) 0%, transparent 46%),
+    radial-gradient(circle at 8% 90%, rgb(73 152 255 / 14%) 0%, transparent 42%),
+    linear-gradient(180deg, rgb(18 19 27 / 94%) 0%, rgb(9 10 16 / 96%) 100%);
   position: relative;
   overflow: hidden;
 }
 
-.clash-stage.flash-hero::after {
+.board-stage.flash-hero::after,
+.board-stage.flash-boss::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgb(102 217 255 / 12%);
   pointer-events: none;
   animation: flashFade 0.35s ease-out forwards;
 }
 
-.clash-stage.flash-boss::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgb(255 109 109 / 12%);
-  pointer-events: none;
-  animation: flashFade 0.35s ease-out forwards;
+.board-stage.flash-hero::after {
+  background: rgb(102 217 255 / 14%);
 }
 
-.clash-side {
+.board-stage.flash-boss::after {
+  background: rgb(255 109 109 / 14%);
+}
+
+.board-row {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
+  align-items: stretch;
+  gap: 0.55rem;
 }
 
-.clash-portrait-wrap {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
+.boss-row .battle-card {
+  width: min(230px, 62vw);
+}
+
+.hero-row {
+  flex-wrap: wrap;
+}
+
+.hero-row .battle-card {
+  width: min(165px, 31vw);
+}
+
+.battle-card {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  border-radius: 12px;
   overflow: hidden;
-  border: 2px solid rgb(102 217 255 / 50%);
-  background: rgb(12 14 20 / 80%);
-  display: grid;
-  place-items: center;
+  border: 2px solid rgb(255 255 255 / 22%);
+  background: rgb(11 13 20 / 88%);
+  transform: translate3d(0, 0, 0) scale(1);
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), filter 280ms ease, box-shadow 280ms ease;
+  box-shadow: 0 15px 24px rgb(0 0 0 / 34%);
 }
 
-.boss-portrait-wrap {
-  border-color: rgb(255 109 109 / 55%);
+.boss-card {
+  border-color: rgb(255 109 109 / 52%);
+  box-shadow: 0 18px 30px rgb(0 0 0 / 36%), 0 0 24px rgb(255 109 109 / 20%);
 }
 
-.clash-placeholder {
-  font-size: 1.8rem;
+.hero-card {
+  border-color: rgb(102 217 255 / 44%);
 }
 
-.clash-portrait {
+.hero-card.standby {
+  opacity: 0.6;
+  filter: saturate(0.68) brightness(0.7);
+}
+
+.battle-card.attacking {
+  z-index: 3;
+}
+
+.hero-card.attacking {
+  animation: heroLunge 0.48s cubic-bezier(0.33, 1, 0.68, 1);
+  box-shadow: 0 24px 34px rgb(15 89 120 / 48%), 0 0 30px rgb(102 217 255 / 44%);
+}
+
+.boss-card.attacking {
+  animation: bossLunge 0.48s cubic-bezier(0.33, 1, 0.68, 1);
+  box-shadow: 0 24px 34px rgb(128 35 35 / 48%), 0 0 30px rgb(255 109 109 / 44%);
+}
+
+.battle-card.targeted::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgb(247 201 72 / 86%);
+  border-radius: inherit;
+  box-shadow: inset 0 0 24px rgb(247 201 72 / 34%);
+  animation: targetPulse 0.5s ease-out;
+  pointer-events: none;
+}
+
+.battle-card-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center top;
 }
 
-.clash-name {
-  margin: 0;
+.battle-card-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0.45rem;
+  display: grid;
+  gap: 0.25rem;
+  background: linear-gradient(180deg, transparent 0%, rgb(8 10 16 / 94%) 70%);
+}
+
+.battle-card-overlay strong {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.84rem;
+  line-height: 1.05;
+}
+
+.battle-card-overlay > span {
+  font-size: 0.7rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.battle-mini-stats {
+  display: flex;
+  gap: 0.28rem;
+  flex-wrap: wrap;
+}
+
+.battle-mini-stats span {
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 999px;
+  padding: 0.08rem 0.38rem;
   font-family: 'Rajdhani', sans-serif;
   font-weight: 700;
-  font-size: 0.92rem;
-  text-align: center;
-  color: #c5e4ff;
+  font-size: 0.7rem;
+  background: rgb(8 10 14 / 76%);
 }
 
-.boss-label {
-  color: #ffb5b5;
-}
-
-.clash-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.board-impact {
+  display: grid;
+  justify-items: center;
   gap: 0.3rem;
 }
 
-.vs-badge {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 1.6rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  color: #f7c948;
-  text-shadow: 0 0 18px rgb(247 201 72 / 40%);
+.impact-line {
+  width: min(530px, 92%);
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgb(102 217 255 / 0%) 0%, rgb(247 201 72 / 85%) 48%, rgb(255 109 109 / 0%) 100%);
 }
 
-.turn-counter {
+.impact-text {
   margin: 0;
+  text-align: center;
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.03em;
+}
+
+.impact-text strong {
+  color: var(--gold-soft);
 }
 
 /* ─── Power Comparison ─── */
@@ -1209,6 +1350,42 @@ li {
   100% { opacity: 0; }
 }
 
+@keyframes heroLunge {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    transform: translateY(-30px) scale(1.04);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes bossLunge {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    transform: translateY(28px) scale(1.04);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes targetPulse {
+  0% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @keyframes slideInUp {
   0% {
     opacity: 0;
@@ -1231,23 +1408,25 @@ li {
 }
 
 @media (max-width: 780px) {
-  .clash-stage {
-    grid-template-columns: 1fr auto 1fr;
-    gap: 0.3rem;
-    padding: 0.55rem;
+  .board-stage {
+    padding: 0.6rem;
+    gap: 0.4rem;
   }
 
-  .clash-portrait-wrap {
-    width: 60px;
-    height: 60px;
+  .boss-row .battle-card {
+    width: min(210px, 70vw);
   }
 
-  .vs-badge {
-    font-size: 1.2rem;
+  .hero-row .battle-card {
+    width: min(145px, 44vw);
   }
 
-  .clash-name {
-    font-size: 0.78rem;
+  .battle-card-overlay strong {
+    font-size: 0.8rem;
+  }
+
+  .impact-text {
+    font-size: 0.8rem;
   }
 
   .power-comparison {
@@ -1275,3 +1454,5 @@ li {
   }
 }
 </style>
+
+
