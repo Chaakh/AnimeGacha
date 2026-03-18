@@ -7,6 +7,7 @@
         <NuxtLink class="link" to="/">Summon</NuxtLink>
         <NuxtLink class="link" to="/collection">Collection</NuxtLink>
         <NuxtLink class="link" to="/battle">Battle</NuxtLink>
+        <NuxtLink class="link" to="/pvp">PvP</NuxtLink>
       </nav>
 
       <div class="actions" aria-hidden="true">
