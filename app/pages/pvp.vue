@@ -144,7 +144,9 @@ function buildShareUrl(id: string) {
   if (!import.meta.client) {
     return `/pvp?lobby=${id}`
   }
-  return `${window.location.origin}/pvp?lobby=${id}`
+  const config = useRuntimeConfig()
+  const base = (config.app.baseURL || '/').replace(/\/$/, '')
+  return `${window.location.origin}${base}/pvp?lobby=${id}`
 }
 
 function stopPolling() {
@@ -277,7 +279,7 @@ async function createLobbyAction() {
     lobbyId.value = response.lobby.id
     lobbyToken.value = response.token
     lobby.value = response.lobby
-    shareUrl.value = response.shareUrl
+    shareUrl.value = buildShareUrl(response.lobby.id)
     selectedCardIds.value = []
     writeStoredToken(response.lobby.id, response.token)
     await router.replace({ path: '/pvp', query: { lobby: response.lobby.id } })

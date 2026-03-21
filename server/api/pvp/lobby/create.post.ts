@@ -1,4 +1,4 @@
-import { getRequestURL, readBody } from 'h3'
+import { readBody } from 'h3'
 import { createLobby, sanitizePlayerName, toLobbyView } from '../../../utils/pvp'
 
 export default defineEventHandler(async (event) => {
@@ -6,12 +6,10 @@ export default defineEventHandler(async (event) => {
   const name = sanitizePlayerName(body?.name ?? '')
 
   const { lobby, token } = createLobby(name)
-  const requestUrl = getRequestURL(event)
-  const shareUrl = `${requestUrl.protocol}//${requestUrl.host}/pvp?lobby=${lobby.id}`
 
   return {
     token,
-    shareUrl,
+    shareUrl: null,
     lobby: toLobbyView(lobby, 'host')
   }
 })
